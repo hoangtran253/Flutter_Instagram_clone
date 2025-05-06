@@ -2,26 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_instagram_clone/screen/login_screen.dart';
 import 'package:flutter_instagram_clone/screen/signup_screen.dart';
 
-class AuthPage extends StatefulWidget {
-  const AuthPage({super.key});
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({super.key});
 
   @override
-  State<AuthPage> createState() => _AuthPageState();
+  State<AuthScreen> createState() => _AuthScreenState();
 }
 
-class _AuthPageState extends State<AuthPage> {
+class _AuthScreenState extends State<AuthScreen> {
   bool a = true;
   void go() {
     setState(() {
       a = !a;
     });
   }
+
   @override
   Widget build(BuildContext context) {
     if (a) {
-      return LoginScreen (go);
-    }else{
-      return Signupscreen(go);
+      return LoginScreen(go);
+    } else {
+      return SignupScreen(go);
     }
   }
 }
