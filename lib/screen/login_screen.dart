@@ -1,5 +1,7 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_instagram_clone/data/firebase_service/firebase_auth.dart';
+import 'package:flutter_instagram_clone/widgets/navigation.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -15,14 +17,15 @@ class _LoginScreenState extends State<LoginScreen> {
   FocusNode email_F = FocusNode();
   final password = TextEditingController();
   FocusNode password_F = FocusNode();
+
   @override
   void dispose() {
-    // TODO: implement dispose
     super.dispose();
     email.dispose();
     password.dispose();
   }
 
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -33,29 +36,29 @@ class _LoginScreenState extends State<LoginScreen> {
             SizedBox(width: 96.w, height: 100.h),
             Center(child: Image.asset('images/logo.jpg')),
             SizedBox(height: 120.h),
-            Textfild(email, email_F, 'Email', Icons.email),
+            _buildTextField(email, email_F, 'Email', Icons.email),
             SizedBox(height: 15.h),
-            Textfild(password, password_F, 'Password', Icons.lock),
+            _buildTextField(password, password_F, 'Password', Icons.lock),
             SizedBox(height: 15.h),
-            forget(),
+            _buildForgetPassword(),
             SizedBox(height: 15.h),
-            login(),
+            _buildLoginButton(),
             SizedBox(height: 15.h),
-            Have(),
+            _buildSignUpOption(),
           ],
         ),
       ),
     );
   }
 
-  Widget Have() {
+  Widget _buildSignUpOption() {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 10.w),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           Text(
-            "Don't have account?  ",
+            "Don't have an account?  ",
             style: TextStyle(fontSize: 14.sp, color: Colors.grey),
           ),
           GestureDetector(
@@ -74,15 +77,37 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget login() {
+  Widget _buildLoginButton() {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 10.w),
       child: InkWell(
         onTap: () async {
-          await Authentication().Login(
-            email: email.text,
-            password: password.text,
-          );
+          try {
+            // Gọi phương thức login
+            await Authentication().login(
+              email: email.text,
+              password: password.text,
+            );
+
+            // Kiểm tra xem đăng nhập thành công hay không
+            if (FirebaseAuth.instance.currentUser != null) {
+              // Nếu đăng nhập thành công, chuyển hướng đến Navigations_Screen
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const Navigations_Screen(),
+                ),
+              );
+            }
+          } catch (e) {
+            // Xử lý lỗi nếu có
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Login failed: ${e.toString()}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
         },
         child: Container(
           alignment: Alignment.center,
@@ -105,11 +130,13 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Padding forget() {
+  Padding _buildForgetPassword() {
     return Padding(
       padding: EdgeInsets.only(left: 230.w),
       child: GestureDetector(
-        onTap: () {},
+        onTap: () {
+          // Add your forgot password logic here
+        },
         child: Text(
           'Forgot password?',
           style: TextStyle(
@@ -122,10 +149,10 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Padding Textfild(
-    TextEditingController controll,
+  Padding _buildTextField(
+    TextEditingController controller,
     FocusNode focusNode,
-    String typename,
+    String hintText,
     IconData icon,
   ) {
     return Padding(
@@ -138,10 +165,10 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         child: TextField(
           style: TextStyle(fontSize: 18.sp, color: Colors.black),
-          controller: controll,
+          controller: controller,
           focusNode: focusNode,
           decoration: InputDecoration(
-            hintText: typename,
+            hintText: hintText,
             prefixIcon: Icon(
               icon,
               color: focusNode.hasFocus ? Colors.black : Colors.grey[600],

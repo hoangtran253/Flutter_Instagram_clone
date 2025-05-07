@@ -1,8 +1,9 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_instagram_clone/data/cloudinary_service.dart';
 import 'package:flutter_instagram_clone/data/firebase_service/firebase_auth.dart';
+import 'package:flutter_instagram_clone/screen/profile_screen.dart';
 import 'package:flutter_instagram_clone/util/dialog.dart';
 import 'package:flutter_instagram_clone/util/exception.dart';
 import 'package:flutter_instagram_clone/util/imagepicker.dart';
@@ -28,9 +29,9 @@ class _SignupScreenState extends State<SignupScreen> {
   final bio = TextEditingController();
   FocusNode bio_F = FocusNode();
   Uint8List? _imageBytes;
+
   @override
   void dispose() {
-    // TODO: implement dispose
     super.dispose();
     email.dispose();
     password.dispose();
@@ -138,12 +139,29 @@ class _SignupScreenState extends State<SignupScreen> {
       child: InkWell(
         onTap: () async {
           try {
-            await Authentication().Signup(
+            String? imageUrl;
+
+            // Nếu người dùng chọn ảnh
+            if (_imageBytes != null) {
+              imageUrl = await CloudinaryService.uploadImage(_imageBytes!);
+            }
+
+            await Authentication().signup(
               email: email.text,
               password: password.text,
-              passwordConfirme: passwordConfirme.text,
+              passwordConfirm: passwordConfirme.text,
               username: username.text,
               bio: bio.text,
+              imageUrl: imageUrl, // truyền ảnh vào đây
+            );
+
+            // Sau khi đăng ký thành công, chuyển sang màn hình Profile
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (context) => ProfileScreen(imageUrlFromRegister: imageUrl),
+              ),
             );
           } on exceptions catch (e) {
             dialogBuilder(context, e.message);

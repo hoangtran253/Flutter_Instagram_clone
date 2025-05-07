@@ -3,52 +3,57 @@ import 'package:flutter_instagram_clone/data/firebase_service/firestore.dart';
 import 'package:flutter_instagram_clone/util/exception.dart';
 
 class Authentication {
-  FirebaseAuth _auth = FirebaseAuth.instance;
-  Future<void> Login({required String email, required String password}) async {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  Future<void> login({required String email, required String password}) async {
     try {
       await _auth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password.trim(),
       );
-    } on FirebaseException catch (e) {
-      throw exceptions(e.message.toString());
+    } on FirebaseAuthException catch (e) {
+      throw exceptions(e.message ?? 'Login failed');
     }
   }
 
-  Future<void> Signup({
+  Future<void> signup({
     required String email,
     required String password,
-    required String passwordConfirme,
+    required String passwordConfirm,
     required String username,
     required String bio,
+    String? imageUrl,
   }) async {
     try {
-      if (email.isNotEmpty &&
-          password.isNotEmpty &&
-          username.isNotEmpty &&
-          bio.isNotEmpty) {
-        if (password == passwordConfirme) {
-          // create user with email and password
-          await _auth.createUserWithEmailAndPassword(
-            email: email.trim(),
-            password: password.trim(),
-          );
-
-          // get information with firestore
-
-          await Firebase_Firestore().CreateUser(
-            email: email,
-            username: username,
-            bio: bio,
-          );
-        } else {
-          throw exceptions('password and confirm password should be same');
-        }
-      } else {
-        throw exceptions('enter all the fields');
+      if (email.isEmpty ||
+          password.isEmpty ||
+          username.isEmpty ||
+          bio.isEmpty) {
+        throw exceptions('Please fill in all the fields.');
       }
-    } on FirebaseException catch (e) {
-      throw exceptions(e.message.toString());
+
+      if (password != passwordConfirm) {
+        throw exceptions('Password and Confirm Password must match.');
+      }
+
+      // Tạo tài khoản
+      final userCredential = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+
+      final uid = userCredential.user!.uid;
+
+      // Lưu người dùng vào Firestore
+      await FirebaseFirestoreService().createUser(
+        uid: uid,
+        email: email,
+        username: username,
+        bio: bio,
+        imageUrl: imageUrl ?? '', // Lưu ảnh vào Firestore
+      );
+    } on FirebaseAuthException catch (e) {
+      throw exceptions(e.message ?? 'Signup failed');
     }
   }
 }

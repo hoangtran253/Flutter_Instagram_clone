@@ -1,9 +1,21 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class PostWidget extends StatelessWidget {
-  const PostWidget({super.key});
+  final String username;
+  final String location;
+  final String caption;
+  final String imageUrl;
+  final String postTime;
+
+  const PostWidget({
+    super.key,
+    required this.username,
+    required this.location,
+    required this.caption,
+    required this.imageUrl,
+    required this.postTime,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -19,11 +31,11 @@ class PostWidget extends StatelessWidget {
                 child: SizedBox(
                   width: 35.w,
                   height: 35.h,
-                  child: Image.asset('images/person.png'),
+                  child: Image.asset('images/person.png'), // avatar tạm
                 ),
               ),
-              title: Text('username', style: TextStyle(fontSize: 13.sp)),
-              subtitle: Text('location', style: TextStyle(fontSize: 11.sp)),
+              title: Text(username, style: TextStyle(fontSize: 13.sp)),
+              subtitle: Text(location, style: TextStyle(fontSize: 11.sp)),
               trailing: Icon(Icons.more_horiz),
             ),
           ),
@@ -32,7 +44,10 @@ class PostWidget extends StatelessWidget {
         Container(
           width: 375.w,
           height: 375.h,
-          child: Image.asset('images/post.jpg', fit: BoxFit.cover),
+          child: Image.network(
+            imageUrl.trim(),
+            fit: BoxFit.cover,
+          ), // fix trim()
         ),
         Container(
           width: 375.w,
@@ -62,20 +77,21 @@ class PostWidget extends StatelessWidget {
                   children: [
                     SizedBox(width: 10),
                     Text(
-                      'username',
+                      username,
                       style: TextStyle(
                         fontSize: 13.sp,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Text(' caption', style: TextStyle(fontSize: 13.sp)),
+                    SizedBox(width: 5),
+                    Text(caption, style: TextStyle(fontSize: 13.sp)),
                   ],
                 ),
               ),
               Padding(
                 padding: EdgeInsets.only(left: 15.w, top: 5.h, bottom: 8.h),
                 child: Text(
-                  'dataformat',
+                  postTime,
                   style: TextStyle(fontSize: 11.sp, color: Colors.grey),
                 ),
               ),

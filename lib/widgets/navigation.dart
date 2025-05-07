@@ -20,16 +20,30 @@ int _currentIndex = 0;
 class _Navigations_ScreenState extends State<Navigations_Screen> {
   late PageController pageController;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  late String userName;
+  late String imageUrl; // Để lưu URL của ảnh người dùng
+
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
     pageController = PageController();
+
+    // Lấy thông tin người dùng từ Firebase Auth
+    final user = _auth.currentUser;
+    if (user != null) {
+      userName = user.displayName ?? 'Unknown';
+      imageUrl =
+          user.photoURL ??
+          'default_profile_image_url'; // Đặt ảnh mặc định nếu không có ảnh
+    } else {
+      userName = 'Unknown';
+      imageUrl = 'default_profile_image_url';
+    }
   }
 
   @override
   void dispose() {
-    // TODO: implement dispose
     super.dispose();
     pageController.dispose();
   }
@@ -77,7 +91,7 @@ class _Navigations_ScreenState extends State<Navigations_Screen> {
           ExplorScreen(),
           AddScreen(),
           ReelScreen(),
-          ProfileScreen(userName: '', imageBytes: null),
+          ProfileScreen(),
         ],
       ),
     );
