@@ -22,7 +22,7 @@ class Authentication {
     required String passwordConfirm,
     required String username,
     required String bio,
-    String? imageUrl,
+    String? avatarUrl,
   }) async {
     try {
       if (email.isEmpty ||
@@ -50,7 +50,7 @@ class Authentication {
         email: email,
         username: username,
         bio: bio,
-        imageUrl: imageUrl ?? '', // Lưu ảnh vào Firestore
+        avatarUrl: avatarUrl ?? '', // Lưu ảnh vào Firestore
       );
     } on FirebaseAuthException catch (e) {
       throw exceptions(e.message ?? 'Signup failed');

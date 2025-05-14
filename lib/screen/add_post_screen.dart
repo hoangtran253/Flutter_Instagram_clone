@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -21,7 +22,33 @@ class _AddPostScreenState extends State<AddPostScreen> {
 
   final String cloudName = 'dv8bbvd5q';
   final String uploadPreset = 'instagram_image';
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  String? _username;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserData();
+  }
+
+  // Lấy thông tin người dùng từ Firestore
+  String? _avatarUrl;
+
+  Future<void> _fetchUserData() async {
+    final uid = _auth.currentUser!.uid;
+    DocumentSnapshot userSnap =
+        await FirebaseFirestore.instance.collection('users').doc(uid).get();
+
+    final userData = userSnap.data() as Map<String, dynamic>;
+
+    setState(() {
+      _username = userData['username'];
+      _avatarUrl = userData['avatarUrl']; // Lấy avatar
+    });
+  }
+
+  // Chọn ảnh từ thiết bị
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
@@ -40,6 +67,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
     }
   }
 
+  // Tải ảnh lên Cloudinary
   Future<String?> uploadToCloudinary(Uint8List imageBytes) async {
     final uri = Uri.parse(
       'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
@@ -67,19 +95,21 @@ class _AddPostScreenState extends State<AddPostScreen> {
     }
   }
 
+  // Xử lý khi người dùng đăng bài
   Future<void> _handlePost() async {
-    if (_imageData == null) return;
+    if (_imageData == null || _username == null) return;
 
     final bytes = _imageData!;
     String? imageUrl = await uploadToCloudinary(bytes);
 
     if (imageUrl != null) {
       final post = {
-        'username': 'currentUser',
-        'location': 'Unknown',
+        'uid': _auth.currentUser!.uid,
+        'username': _username,
         'caption': _captionController.text,
         'imageUrl': imageUrl,
-        'postTime': DateTime.now().toIso8601String(), // lưu thời gian chuẩn
+        'avatarUrl': _avatarUrl,
+        'postTime': FieldValue.serverTimestamp(),
       };
 
       await FirebaseFirestore.instance.collection('posts').add(post);

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_instagram_clone/screen/add_post_screen.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_instagram_clone/widgets/post_widget.dart';
+import 'package:intl/intl.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,25 +13,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<Map<String, dynamic>> posts = [
-    {
-      'username': 'johndoe',
-      'location': 'New York',
-      'caption': 'Chilling with coffee ☕',
-      'imageUrl':
-          'https://res.cloudinary.com/dv8bbvd5q/image/upload/v1746603352/yhv4dqsl5rezbdvs86mm.png',
-      'postTime': '2 hours ago',
-    },
-    {
-      'username': 'janedoe',
-      'location': 'Tokyo',
-      'caption': 'Sunset vibes 🌇',
-      'imageUrl':
-          'https://res.cloudinary.com/dv8bbvd5q/image/upload/v1746603352/yhv4dqsl5rezbdvs86mm.png',
-      'postTime': '5 hours ago',
-    },
-    // thêm bài viết khác nếu muốn
-  ];
+  List<Map<String, dynamic>> posts = [];
 
   // Hàm này sẽ được gọi khi quay lại từ AddPostScreen với dữ liệu mới
   void _addNewPost(Map<String, dynamic> newPost) {
@@ -80,12 +63,21 @@ class _HomeScreenState extends State<HomeScreen> {
             itemCount: posts.length,
             itemBuilder: (context, index) {
               final post = posts[index].data() as Map<String, dynamic>;
+              final Timestamp? timestamp = post['postTime'];
+              String formattedTime = '';
+
+              if (timestamp != null) {
+                formattedTime = DateFormat(
+                  'dd/MM/yyyy HH:mm',
+                ).format(timestamp.toDate());
+              }
+
               return PostWidget(
                 username: post['username'] ?? '',
-                location: post['location'] ?? '',
                 caption: post['caption'] ?? '',
                 imageUrl: post['imageUrl'] ?? '',
-                postTime: post['postTime'] ?? '',
+                avatarUrl: post['avatarUrl'] ?? '',
+                postTime: formattedTime,
               );
             },
           );

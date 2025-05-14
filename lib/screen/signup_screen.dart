@@ -7,6 +7,7 @@ import 'package:flutter_instagram_clone/screen/profile_screen.dart';
 import 'package:flutter_instagram_clone/util/dialog.dart';
 import 'package:flutter_instagram_clone/util/exception.dart';
 import 'package:flutter_instagram_clone/util/imagepicker.dart';
+import 'package:flutter_instagram_clone/widgets/navigation.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -139,11 +140,12 @@ class _SignupScreenState extends State<SignupScreen> {
       child: InkWell(
         onTap: () async {
           try {
-            String? imageUrl;
-
-            // Nếu người dùng chọn ảnh
+            String? avatarUrl;
             if (_imageBytes != null) {
-              imageUrl = await CloudinaryService.uploadImage(_imageBytes!);
+              avatarUrl = await CloudinaryService.uploadImage(
+                _imageBytes!,
+                fileName: 'avatar.jpg',
+              );
             }
 
             await Authentication().signup(
@@ -152,21 +154,18 @@ class _SignupScreenState extends State<SignupScreen> {
               passwordConfirm: passwordConfirme.text,
               username: username.text,
               bio: bio.text,
-              imageUrl: imageUrl, // truyền ảnh vào đây
+              avatarUrl: avatarUrl ?? '',
             );
 
-            // Sau khi đăng ký thành công, chuyển sang màn hình Profile
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(
-                builder:
-                    (context) => ProfileScreen(imageUrlFromRegister: imageUrl),
-              ),
+              MaterialPageRoute(builder: (context) => Navigations_Screen()),
             );
           } on exceptions catch (e) {
             dialogBuilder(context, e.message);
           }
         },
+
         child: Container(
           alignment: Alignment.center,
           width: double.infinity,

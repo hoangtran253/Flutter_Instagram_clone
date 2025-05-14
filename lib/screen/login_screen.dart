@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_instagram_clone/auth/admin_auth.dart';
 import 'package:flutter_instagram_clone/data/firebase_service/firebase_auth.dart';
+import 'package:flutter_instagram_clone/screen/adminscreens/admin_dashboard.dart';
 import 'package:flutter_instagram_clone/widgets/navigation.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -83,30 +85,21 @@ class _LoginScreenState extends State<LoginScreen> {
       child: InkWell(
         onTap: () async {
           try {
-            // Gọi phương thức login
             await Authentication().login(
               email: email.text,
               password: password.text,
             );
-
-            // Kiểm tra xem đăng nhập thành công hay không
-            if (FirebaseAuth.instance.currentUser != null) {
-              // Nếu đăng nhập thành công, chuyển hướng đến Navigations_Screen
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const Navigations_Screen(),
+            // ❌ Bỏ phần kiểm tra isAdmin và push screen ở đây
+            // ✅ AuthWrapper sẽ xử lý việc điều hướng
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Login failed: ${e.toString()}'),
+                  backgroundColor: Colors.red,
                 ),
               );
             }
-          } catch (e) {
-            // Xử lý lỗi nếu có
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Login failed: ${e.toString()}'),
-                backgroundColor: Colors.red,
-              ),
-            );
           }
         },
         child: Container(

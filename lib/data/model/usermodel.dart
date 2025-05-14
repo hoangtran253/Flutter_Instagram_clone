@@ -4,19 +4,19 @@ class Usermodel {
   String bio;
   List following;
   List followers;
-  String imageUrl;
+  String imageUrl; // ảnh bài viết
+  String avatarUrl; // ảnh đại diện
 
-  // Constructor
   Usermodel({
     required this.bio,
     required this.email,
     required this.followers,
     required this.following,
     required this.username,
-    required this.imageUrl, // Thêm imageUrl
+    required this.imageUrl,
+    required this.avatarUrl,
   });
 
-  // Chuyển đổi từ Firestore (Map) về đối tượng Usermodel
   factory Usermodel.fromMap(Map<String, dynamic> data) {
     return Usermodel(
       bio: data['bio'] ?? '',
@@ -24,11 +24,11 @@ class Usermodel {
       followers: List<String>.from(data['followers'] ?? []),
       following: List<String>.from(data['following'] ?? []),
       username: data['username'] ?? '',
-      imageUrl: data['imageUrl'] ?? '', // lấy imageUrl từ Firestore
+      avatarUrl: data['avatarUrl'] ?? '',
+      imageUrl: data['imageUrl'] ?? '',
     );
   }
 
-  // Chuyển đổi từ Usermodel về Map (để lưu vào Firestore)
   Map<String, dynamic> toMap() {
     return {
       'bio': bio,
@@ -36,7 +36,8 @@ class Usermodel {
       'followers': followers,
       'following': following,
       'username': username,
-      'imageUrl': imageUrl, // Lưu imageUrl vào Firestore
+      'imageUrl': imageUrl,
+      'avatarUrl': avatarUrl,
     };
   }
 }

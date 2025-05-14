@@ -1,20 +1,21 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class PostWidget extends StatelessWidget {
   final String username;
-  final String location;
   final String caption;
   final String imageUrl;
   final String postTime;
+  final String avatarUrl;
 
   const PostWidget({
     super.key,
     required this.username,
-    required this.location,
     required this.caption,
     required this.imageUrl,
     required this.postTime,
+    required this.avatarUrl,
   });
 
   @override
@@ -25,36 +26,48 @@ class PostWidget extends StatelessWidget {
           width: 375.w,
           height: 54.h,
           color: Colors.white,
-          child: Center(
-            child: ListTile(
-              leading: ClipOval(
-                child: SizedBox(
-                  width: 35.w,
-                  height: 35.h,
-                  child: Image.asset('images/person.png'), // avatar tạm
-                ),
+          child: ListTile(
+            leading: ClipOval(
+              child: SizedBox(
+                width: 35.w,
+                height: 35.h,
+                child:
+                    avatarUrl.isNotEmpty
+                        ? CachedNetworkImage(
+                          imageUrl: avatarUrl,
+                          fit: BoxFit.cover,
+                          placeholder:
+                              (context, url) => CircularProgressIndicator(),
+                          errorWidget:
+                              (context, url, error) => Icon(Icons.error),
+                        )
+                        : Icon(
+                          Icons.account_circle,
+                          size: 35.w,
+                        ), // Hình ảnh mặc định nếu avatarUrl không có
               ),
-              title: Text(username, style: TextStyle(fontSize: 13.sp)),
-              subtitle: Text(location, style: TextStyle(fontSize: 11.sp)),
-              trailing: Icon(Icons.more_horiz),
             ),
+            title: Text(username, style: TextStyle(fontSize: 13.sp)),
+            trailing: Icon(Icons.more_horiz),
           ),
         ),
-        SizedBox(height: 20),
+        SizedBox(height: 8.h),
         Container(
           width: 375.w,
           height: 375.h,
-          child: Image.network(
-            imageUrl.trim(),
+          child: CachedNetworkImage(
+            imageUrl: imageUrl.trim(),
             fit: BoxFit.cover,
-          ), // fix trim()
+            placeholder: (context, url) => CircularProgressIndicator(),
+            errorWidget: (context, url, error) => Icon(Icons.error),
+          ),
         ),
         Container(
           width: 375.w,
           color: Colors.white,
           child: Column(
             children: [
-              SizedBox(width: 10, height: 15),
+              SizedBox(height: 15),
               Row(
                 children: [
                   SizedBox(width: 14.w),
@@ -70,9 +83,9 @@ class PostWidget extends StatelessWidget {
                   ),
                 ],
               ),
-              SizedBox(height: 15),
+              SizedBox(height: 8.h),
               Padding(
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.all(5),
                 child: Row(
                   children: [
                     SizedBox(width: 10),
@@ -89,7 +102,7 @@ class PostWidget extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: EdgeInsets.only(left: 15.w, top: 5.h, bottom: 8.h),
+                padding: EdgeInsets.only(top: 5.h, bottom: 8.h),
                 child: Text(
                   postTime,
                   style: TextStyle(fontSize: 11.sp, color: Colors.grey),

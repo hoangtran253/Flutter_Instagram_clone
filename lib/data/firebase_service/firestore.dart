@@ -8,14 +8,14 @@ class FirebaseFirestoreService {
     required String email,
     required String username,
     required String bio,
-    required String imageUrl,
+    required String avatarUrl,
   }) async {
     try {
       await _firestore.collection('users').doc(uid).set({
         'email': email,
         'username': username,
         'bio': bio,
-        'imageUrl': imageUrl, // Lưu ảnh đại diện vào Firestore
+        'avatarUrl': avatarUrl, // Lưu ảnh đại diện vào Firestore
       });
     } catch (e) {
       print("Error creating user in Firestore: $e");
