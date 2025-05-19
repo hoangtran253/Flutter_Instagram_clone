@@ -2,7 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-class PostWidget extends StatelessWidget {
+class PostWidget extends StatefulWidget {
   final String username;
   final String caption;
   final String imageUrl;
@@ -19,99 +19,193 @@ class PostWidget extends StatelessWidget {
   });
 
   @override
+  State<PostWidget> createState() => _PostWidgetState();
+}
+
+class _PostWidgetState extends State<PostWidget>
+    with SingleTickerProviderStateMixin {
+  bool _isLiked = false;
+  bool _showHeart = false;
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+
+    _animation = Tween<double>(
+      begin: 1.5,
+      end: 0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        setState(() {
+          _showHeart = false;
+        });
+        _controller.reset();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onDoubleTap() {
+    setState(() {
+      _isLiked = true;
+      _showHeart = true;
+    });
+    _controller.forward();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 375.w,
-          height: 54.h,
-          color: Colors.white,
-          child: ListTile(
-            leading: ClipOval(
-              child: SizedBox(
-                width: 35.w,
-                height: 35.h,
-                child:
-                    avatarUrl.isNotEmpty
-                        ? CachedNetworkImage(
-                          imageUrl: avatarUrl,
-                          fit: BoxFit.cover,
-                          placeholder:
-                              (context, url) => CircularProgressIndicator(),
-                          errorWidget:
-                              (context, url, error) => Icon(Icons.error),
-                        )
-                        : Icon(
-                          Icons.account_circle,
-                          size: 35.w,
-                        ), // Hình ảnh mặc định nếu avatarUrl không có
-              ),
-            ),
-            title: Text(username, style: TextStyle(fontSize: 13.sp)),
-            trailing: Icon(Icons.more_horiz),
-          ),
-        ),
-        SizedBox(height: 8.h),
-        Container(
-          width: 375.w,
-          height: 375.h,
-          child: CachedNetworkImage(
-            imageUrl: imageUrl.trim(),
-            fit: BoxFit.cover,
-            placeholder: (context, url) => CircularProgressIndicator(),
-            errorWidget: (context, url, error) => Icon(Icons.error),
-          ),
-        ),
-        Container(
-          width: 375.w,
-          color: Colors.white,
-          child: Column(
-            children: [
-              SizedBox(height: 15),
-              Row(
-                children: [
-                  SizedBox(width: 14.w),
-                  Icon(Icons.favorite_outlined, size: 25.w),
-                  SizedBox(width: 17.w),
-                  Image.asset('images/comment.webp', height: 28.h),
-                  SizedBox(width: 14.w),
-                  Image.asset('images/send.jpg', height: 28.h),
-                  const Spacer(),
-                  Padding(
-                    padding: EdgeInsets.only(right: 15.w),
-                    child: Image.asset('images/save.png', height: 28.h),
+    return Card(
+      margin: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+            child: Row(
+              children: [
+                Container(
+                  width: 40.w,
+                  height: 40.w,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.grey.shade300, width: 1),
                   ),
-                ],
-              ),
-              SizedBox(height: 8.h),
-              Padding(
-                padding: const EdgeInsets.all(5),
-                child: Row(
-                  children: [
-                    SizedBox(width: 10),
-                    Text(
-                      username,
-                      style: TextStyle(
-                        fontSize: 13.sp,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  child: ClipOval(
+                    child:
+                        widget.avatarUrl.isNotEmpty
+                            ? CachedNetworkImage(
+                              imageUrl: widget.avatarUrl,
+                              fit: BoxFit.cover,
+                              placeholder:
+                                  (context, url) => Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 1.5,
+                                    ),
+                                  ),
+                              errorWidget:
+                                  (context, url, error) => Icon(Icons.error),
+                            )
+                            : Icon(Icons.account_circle, size: 35.w),
+                  ),
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: Text(
+                    widget.username,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
                     ),
-                    SizedBox(width: 5),
-                    Text(caption, style: TextStyle(fontSize: 13.sp)),
-                  ],
+                  ),
+                ),
+                Icon(Icons.more_horiz),
+              ],
+            ),
+          ),
+
+          // Post Image with double tap
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              GestureDetector(
+                onDoubleTap: _onDoubleTap,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12.r),
+                  child: CachedNetworkImage(
+                    imageUrl: widget.imageUrl.trim(),
+                    width: double.infinity,
+                    height: 375.h,
+                    fit: BoxFit.cover,
+                    placeholder:
+                        (context, url) => Container(
+                          color: Colors.grey.shade200,
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                    errorWidget: (context, url, error) => Icon(Icons.error),
+                  ),
                 ),
               ),
-              Padding(
-                padding: EdgeInsets.only(top: 5.h, bottom: 8.h),
-                child: Text(
-                  postTime,
-                  style: TextStyle(fontSize: 11.sp, color: Colors.grey),
+
+              // Heart animation
+              if (_showHeart)
+                ScaleTransition(
+                  scale: _animation,
+                  child: Icon(
+                    Icons.favorite,
+                    color: Colors.red.withOpacity(0.8),
+                    size: 120.sp,
+                  ),
                 ),
-              ),
             ],
           ),
-        ),
-      ],
+
+          // Action Buttons
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+            child: Row(
+              children: [
+                Icon(
+                  _isLiked ? Icons.favorite : Icons.favorite_border,
+                  color: _isLiked ? Colors.red : Colors.black,
+                  size: 26.sp,
+                ),
+                SizedBox(width: 15.w),
+                Image.asset('images/comment.webp', height: 26.h),
+                SizedBox(width: 15.w),
+                Image.asset('images/send.jpg', height: 24.h),
+                Spacer(),
+                Image.asset('images/save.png', height: 24.h),
+              ],
+            ),
+          ),
+
+          // Caption
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12.w),
+            child: RichText(
+              text: TextSpan(
+                style: TextStyle(color: Colors.black, fontSize: 13.sp),
+                children: [
+                  TextSpan(
+                    text: widget.username + " ",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  TextSpan(text: widget.caption),
+                ],
+              ),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+
+          // Time
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+            child: Text(
+              widget.postTime,
+              style: TextStyle(fontSize: 11.sp, color: Colors.grey),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

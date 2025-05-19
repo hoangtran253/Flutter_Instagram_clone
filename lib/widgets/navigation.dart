@@ -90,7 +90,7 @@ class _Navigations_ScreenState extends State<Navigations_Screen> {
           HomeScreen(),
           ExplorScreen(),
           AddScreen(),
-          ReelScreen(),
+          ReelsScreen(),
           ProfileScreen(),
         ],
       ),

@@ -25,6 +25,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   String? _username;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -54,16 +55,10 @@ class _AddPostScreenState extends State<AddPostScreen> {
     final picked = await picker.pickImage(source: ImageSource.gallery);
 
     if (picked != null) {
-      if (kIsWeb) {
-        final bytes = await picked.readAsBytes();
-        setState(() {
-          _imageData = bytes;
-        });
-      } else {
-        setState(() {
-          _imageData = null;
-        });
-      }
+      final bytes = await picked.readAsBytes();
+      setState(() {
+        _imageData = bytes;
+      });
     }
   }
 
@@ -98,6 +93,9 @@ class _AddPostScreenState extends State<AddPostScreen> {
   // Xử lý khi người dùng đăng bài
   Future<void> _handlePost() async {
     if (_imageData == null || _username == null) return;
+    setState(() {
+      _isLoading = true;
+    });
 
     final bytes = _imageData!;
     String? imageUrl = await uploadToCloudinary(bytes);
@@ -121,68 +119,158 @@ class _AddPostScreenState extends State<AddPostScreen> {
       setState(() {
         _imageData = null;
         _captionController.clear();
+        _isLoading = false;
       });
     } else {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Tải ảnh lên thất bại.")));
+
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('New Post', style: TextStyle(color: Colors.black)),
+        title: const Text(
+          'Tạo bài viết',
+          style: TextStyle(color: Colors.black),
+        ),
         backgroundColor: Colors.white,
-        elevation: 0,
+        elevation: 1,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: Column(
-        children: [
-          Container(
-            height: 375.h,
-            width: double.infinity,
-            color: Colors.grey.shade300,
-            child:
-                _imageData != null
-                    ? Image.memory(_imageData!, fit: BoxFit.cover)
-                    : const Center(child: Text('Chưa chọn ảnh')),
-          ),
-          Container(
-            width: double.infinity,
-            color: Colors.white,
-            padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
-            child: TextField(
-              controller: _captionController,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Nhập nội dung bài viết...',
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Hiển thị ảnh
+              AspectRatio(
+                aspectRatio: 1,
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child:
+                        _imageData != null
+                            ? ClipRRect(
+                              borderRadius: BorderRadius.circular(12.r),
+                              child: Image.memory(
+                                _imageData!,
+                                key: ValueKey(_imageData),
+                                fit: BoxFit.cover,
+                              ),
+                            )
+                            : Center(
+                              child: Text(
+                                'Chưa chọn ảnh',
+                                style: TextStyle(fontSize: 16.sp),
+                              ),
+                            ),
+                  ),
+                ),
               ),
-              maxLines: null,
-            ),
-          ),
-          ElevatedButton(onPressed: _handlePost, child: const Text("Đăng bài")),
-          Container(
-            width: double.infinity,
-            height: 40.h,
-            color: Colors.white,
-            padding: EdgeInsets.symmetric(horizontal: 10.w),
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Chọn ảnh từ thiết bị',
-              style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600),
-            ),
-          ),
-          Expanded(
-            child: Center(
-              child: ElevatedButton.icon(
-                onPressed: _pickImage,
-                icon: const Icon(Icons.photo),
-                label: const Text("Chọn ảnh"),
+              SizedBox(height: 16.h),
+
+              // Thông tin người dùng
+              if (_username != null)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundImage:
+                        _avatarUrl != null
+                            ? NetworkImage(_avatarUrl!)
+                            : const AssetImage('assets/default_avatar.png')
+                                as ImageProvider,
+                  ),
+                  title: Text(
+                    _username!,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16.sp,
+                    ),
+                  ),
+                ),
+              SizedBox(height: 10.h),
+
+              // Caption
+              TextField(
+                controller: _captionController,
+                maxLines: null,
+                decoration: InputDecoration(
+                  hintText: 'Bạn đang nghĩ gì?',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12.w,
+                    vertical: 10.h,
+                  ),
+                ),
               ),
-            ),
+              SizedBox(height: 16.h),
+
+              // Nút đăng bài
+              SizedBox(
+                width: double.infinity,
+                height: 45.h,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _handlePost,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                    ),
+                  ),
+                  child:
+                      _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text(
+                            "Đăng bài",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                ),
+              ),
+              SizedBox(height: 24.h),
+
+              // Chọn ảnh
+              Text(
+                "Ảnh từ thiết bị",
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15.sp),
+              ),
+              SizedBox(height: 8.h),
+              Center(
+                child: OutlinedButton.icon(
+                  onPressed: _pickImage,
+                  icon: const Icon(Icons.photo),
+                  label: const Text("Chọn ảnh"),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 20.w,
+                      vertical: 10.h,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: 70.h),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

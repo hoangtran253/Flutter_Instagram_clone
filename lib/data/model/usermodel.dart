@@ -4,8 +4,9 @@ class Usermodel {
   String bio;
   List following;
   List followers;
-  String imageUrl; // ảnh bài viết
-  String avatarUrl; // ảnh đại diện
+  String imageUrl;
+  String avatarUrl;
+  String videoUrl;
 
   Usermodel({
     required this.bio,
@@ -15,6 +16,7 @@ class Usermodel {
     required this.username,
     required this.imageUrl,
     required this.avatarUrl,
+    required this.videoUrl,
   });
 
   factory Usermodel.fromMap(Map<String, dynamic> data) {
@@ -26,6 +28,7 @@ class Usermodel {
       username: data['username'] ?? '',
       avatarUrl: data['avatarUrl'] ?? '',
       imageUrl: data['imageUrl'] ?? '',
+      videoUrl: data['videoUrl'] ?? '',
     );
   }
 

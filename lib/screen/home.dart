@@ -1,8 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_instagram_clone/screen/add_post_screen.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_instagram_clone/widgets/post_widget.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -13,38 +12,32 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<Map<String, dynamic>> posts = [];
-
-  // Hàm này sẽ được gọi khi quay lại từ AddPostScreen với dữ liệu mới
-  void _addNewPost(Map<String, dynamic> newPost) {
-    setState(() {
-      posts.insert(0, newPost); // Thêm bài viết mới vào đầu danh sách
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false,
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        centerTitle: true,
-        elevation: 0,
-        title: SizedBox(
-          width: 105.w,
-          child: Image.asset('images/instagram.png', fit: BoxFit.contain),
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(55.h),
+        child: AppBar(
+          elevation: 0,
+          backgroundColor: Colors.white,
+          centerTitle: true,
+          leading: IconButton(
+            icon: Image.asset('images/camera.png', width: 25.w),
+            onPressed: () {},
+          ),
+          title: Image.asset('images/instagram.png', height: 30.h),
+          actions: [
+            IconButton(
+              icon: Icon(Icons.favorite_border, color: Colors.black),
+              onPressed: () {},
+            ),
+            IconButton(
+              icon: Image.asset('images/send.png', width: 24.w),
+              onPressed: () {},
+            ),
+          ],
         ),
-        leading: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 15.h),
-          child: Image.asset('images/camera.png', fit: BoxFit.contain),
-        ),
-        actions: [
-          Icon(Icons.favorite_border_outlined, color: Colors.black, size: 25),
-          SizedBox(width: 8),
-          Image.asset('images/send.png', width: 30.w, fit: BoxFit.contain),
-        ],
-        actionsPadding: EdgeInsets.symmetric(horizontal: 10.w),
-        backgroundColor: const Color(0xffFAFAFA),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream:
@@ -53,14 +46,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 .orderBy('postTime', descending: true)
                 .snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            );
+          }
+
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return Center(
+              child: Text(
+                "Chưa có bài viết nào",
+                style: TextStyle(fontSize: 16.sp, color: Colors.grey),
+              ),
+            );
           }
 
           final posts = snapshot.data!.docs;
 
-          return ListView.builder(
+          return ListView.separated(
+            padding: EdgeInsets.symmetric(vertical: 10.h),
             itemCount: posts.length,
+            separatorBuilder: (_, __) => SizedBox(height: 12.h),
             itemBuilder: (context, index) {
               final post = posts[index].data() as Map<String, dynamic>;
               final Timestamp? timestamp = post['postTime'];

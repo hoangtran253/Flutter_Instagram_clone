@@ -10,34 +10,37 @@ class AddScreen extends StatefulWidget {
   State<AddScreen> createState() => _AddScreenState();
 }
 
-int _currentIndex = 0;
-
 class _AddScreenState extends State<AddScreen> {
   late PageController pageController;
+  int _currentIndex = 0;
+
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
     pageController = PageController();
   }
 
   @override
   void dispose() {
-    // TODO: implement dispose
-    super.dispose();
     pageController.dispose();
+    super.dispose();
   }
 
-  onPageChanged(int page) {
+  void onPageChanged(int page) {
     setState(() {
       _currentIndex = page;
     });
   }
 
-  navigationTapped(int page) {
-    pageController.jumpToPage(page);
+  void navigationTapped(int page) {
+    pageController.animateToPage(
+      page,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -48,49 +51,74 @@ class _AddScreenState extends State<AddScreen> {
             PageView(
               controller: pageController,
               onPageChanged: onPageChanged,
-              children: const [AddPostScreen(), AddReelsScreen()],
+              children: const [AddPostScreen(), AddReelScreen()],
             ),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 300),
+            Positioned(
               bottom: 10.h,
-              right: _currentIndex == 0 ? 100.w : 150.w,
               child: Container(
-                width: 120.w,
+                width: 200.w,
                 height: 40.h,
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.6),
                   borderRadius: BorderRadius.circular(20.r),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                child: Stack(
                   children: [
-                    GestureDetector(
-                      onTap: () {
-                        navigationTapped(0);
-                      },
-                      child: Text(
-                        'Post',
-                        style: TextStyle(
-                          fontSize: 15.sp,
-                          fontWeight: FontWeight.w500,
-                          color:
-                              _currentIndex == 0 ? Colors.white : Colors.grey,
+                    // Indicator
+                    AnimatedAlign(
+                      duration: const Duration(milliseconds: 300),
+                      alignment:
+                          _currentIndex == 0
+                              ? Alignment.centerLeft
+                              : Alignment.centerRight,
+                      child: Container(
+                        width: 100.w,
+                        height: 40.h,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20.r),
                         ),
                       ),
                     ),
-                    GestureDetector(
-                      onTap: () {
-                        navigationTapped(1);
-                      },
-                      child: Text(
-                        'Reels',
-                        style: TextStyle(
-                          fontSize: 15.sp,
-                          fontWeight: FontWeight.w500,
-                          color:
-                              _currentIndex == 1 ? Colors.white : Colors.grey,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => navigationTapped(0),
+                            child: Center(
+                              child: Text(
+                                'Post',
+                                style: TextStyle(
+                                  fontSize: 15.sp,
+                                  fontWeight: FontWeight.w500,
+                                  color:
+                                      _currentIndex == 0
+                                          ? Colors.white
+                                          : Colors.grey,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => navigationTapped(1),
+                            child: Center(
+                              child: Text(
+                                'Reels',
+                                style: TextStyle(
+                                  fontSize: 15.sp,
+                                  fontWeight: FontWeight.w500,
+                                  color:
+                                      _currentIndex == 1
+                                          ? Colors.white
+                                          : Colors.grey,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
