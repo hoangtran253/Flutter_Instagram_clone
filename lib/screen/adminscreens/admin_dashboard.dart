@@ -1,25 +1,57 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_instagram_clone/auth/auth_screen.dart';
 import 'package:flutter_instagram_clone/auth/auth_wrapper.dart';
 import 'package:flutter_instagram_clone/data/model/adminmodel.dart';
+import 'package:flutter_instagram_clone/screen/adminscreens/analytics_dashboard.dart';
 import 'package:flutter_instagram_clone/screen/adminscreens/post_management.dart';
+import 'package:flutter_instagram_clone/screen/adminscreens/reels_management.dart';
 import 'package:flutter_instagram_clone/screen/adminscreens/users_management.dart';
+import 'package:intl/intl.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(AdminApp());
+}
+
+class AdminApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Admin Dashboard',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        brightness: Brightness.light,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          elevation: 1,
+          systemOverlayStyle: SystemUiOverlayStyle.dark,
+        ),
+      ),
+      darkTheme: ThemeData(
+        primarySwatch: Colors.blue,
+        brightness: Brightness.dark,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      themeMode: ThemeMode.system,
+      home: AdminDashboard(),
+    );
+  }
+}
 
 class AdminDashboard extends StatefulWidget {
-  const AdminDashboard({Key? key}) : super(key: key);
-
   @override
-  State<AdminDashboard> createState() => _AdminDashboardState();
+  _AdminDashboardState createState() => _AdminDashboardState();
 }
 
 class _AdminDashboardState extends State<AdminDashboard> {
+  int _selectedIndex = 0;
   final AdminService _adminService = AdminService();
-  Map<String, dynamic> _analytics = {
-    'totalUsers': 0,
-    'totalPosts': 0,
-    'recentPosts': 0,
-  };
+  Map<String, dynamic> _analytics = {};
   bool _isLoading = true;
 
   @override
@@ -32,26 +64,41 @@ class _AdminDashboardState extends State<AdminDashboard> {
     setState(() {
       _isLoading = true;
     });
-
     try {
       final analytics = await _adminService.getAnalytics();
-      if (mounted) {
-        setState(() {
-          _analytics = analytics;
-        });
-      }
+      setState(() {
+        _analytics = analytics;
+        _isLoading = false;
+      });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to load analytics')));
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      print('Error loading analytics: $e');
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load analytics')));
+    }
+  }
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  Widget _buildBody() {
+    switch (_selectedIndex) {
+      case 0:
+        return AnalyticsPage(analytics: _analytics, onRefresh: _loadAnalytics);
+      case 1:
+        return UsersManagementPage(adminService: _adminService);
+      case 2:
+        return PostsManagementPage(adminService: _adminService);
+      case 3:
+        return ReelsManagementPage(adminService: _adminService);
+      default:
+        return Center(child: Text('Page not found'));
     }
   }
 
@@ -59,230 +106,50 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Admin Panel'),
-        centerTitle: true,
+        title: Text(
+          'Admin Dashboard',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         actions: [
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: _loadAnalytics,
+            tooltip: 'Refresh Data',
+          ),
           IconButton(
             icon: Icon(Icons.logout),
             onPressed: () async {
               await FirebaseAuth.instance.signOut();
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const AuthWrapper()),
-                (route) => false,
-              );
             },
           ),
+          SizedBox(width: 8),
         ],
       ),
-
       body:
           _isLoading
               ? Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                padding: EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Dashboard Overview',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 24),
-
-                    // Analytics Cards
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildAnalyticsCard(
-                            'Total Users',
-                            '${_analytics['totalUsers']}',
-                            Icons.people,
-                            Colors.blue,
-                          ),
-                        ),
-                        SizedBox(width: 16),
-                        Expanded(
-                          child: _buildAnalyticsCard(
-                            'Total Posts',
-                            '${_analytics['totalPosts']}',
-                            Icons.photo_library,
-                            Colors.green,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildAnalyticsCard(
-                            'Posts This Week',
-                            '${_analytics['recentPosts']}',
-                            Icons.trending_up,
-                            Colors.orange,
-                          ),
-                        ),
-                        SizedBox(width: 16),
-                        Expanded(
-                          child: _buildAnalyticsCard(
-                            'Active Status',
-                            'Online',
-                            Icons.check_circle,
-                            Colors.green,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    SizedBox(height: 32),
-
-                    // Management Section
-                    Text(
-                      'Management',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 16),
-
-                    // User Management Card
-                    _buildManagementCard(
-                      'User Management',
-                      'View, edit, and manage user accounts',
-                      Icons.manage_accounts,
-                      () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => UsersManagementScreen(),
-                          ),
-                        );
-                      },
-                    ),
-
-                    SizedBox(height: 16),
-
-                    // Post Management Card
-                    _buildManagementCard(
-                      'Post Management',
-                      'Review, moderate, and manage user posts',
-                      Icons.post_add,
-                      () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => PostsManagementScreen(),
-                          ),
-                        );
-                      },
-                    ),
-
-                    SizedBox(height: 16),
-
-                    // Refresh Button
-                    Center(
-                      child: ElevatedButton.icon(
-                        onPressed: _loadAnalytics,
-                        icon: Icon(Icons.refresh),
-                        label: Text('Refresh Data'),
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 12,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-    );
-  }
-
-  Widget _buildAnalyticsCard(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 32),
-            SizedBox(height: 12),
-            Text(
-              title,
-              style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-            ),
-            SizedBox(height: 4),
-            Text(
-              value,
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildManagementCard(
-    String title,
-    String description,
-    IconData icon,
-    VoidCallback onTap,
-  ) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: Colors.blue, size: 28),
-              ),
-              SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      description,
-                      style: TextStyle(fontSize: 14, color: Colors.grey[700]),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.arrow_forward_ios, size: 16),
-            ],
+              : _buildBody(),
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        selectedItemColor: Theme.of(context).primaryColor,
+        unselectedItemColor: Colors.grey,
+        items: [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard),
+            label: 'Dashboard',
           ),
-        ),
+          BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Users'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.photo_library),
+            label: 'Posts',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.video_library),
+            label: 'Reels',
+          ),
+        ],
       ),
     );
   }

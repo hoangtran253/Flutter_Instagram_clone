@@ -79,6 +79,8 @@ class _HomeScreenState extends State<HomeScreen> {
               }
 
               return PostWidget(
+                uid: post['uid'] ?? '',
+                postId: post['postId'] ?? '',
                 username: post['username'] ?? '',
                 caption: post['caption'] ?? '',
                 imageUrl: post['imageUrl'] ?? '',

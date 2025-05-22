@@ -44,9 +44,7 @@ class AuthWrapper extends StatelessWidget {
             }
 
             final isAdmin = snapshot.data ?? false;
-            return isAdmin
-                ? const AdminDashboard()
-                : const Navigations_Screen();
+            return isAdmin ? AdminDashboard() : const Navigations_Screen();
           },
         );
       },

@@ -1,20 +1,23 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_instagram_clone/data/model/adminmodel.dart';
-import 'package:flutter_instagram_clone/screen/adminscreens/post_detail.dart';
+import 'package:intl/intl.dart';
 
-class PostsManagementScreen extends StatefulWidget {
-  const PostsManagementScreen({Key? key}) : super(key: key);
+class PostsManagementPage extends StatefulWidget {
+  final AdminService adminService;
+
+  const PostsManagementPage({Key? key, required this.adminService})
+    : super(key: key);
 
   @override
-  State<PostsManagementScreen> createState() => _PostsManagementScreenState();
+  _PostsManagementPageState createState() => _PostsManagementPageState();
 }
 
-class _PostsManagementScreenState extends State<PostsManagementScreen> {
-  final AdminService _adminService = AdminService();
+class _PostsManagementPageState extends State<PostsManagementPage> {
   List<Map<String, dynamic>> _posts = [];
+  List<Map<String, dynamic>> _filteredPosts = [];
   bool _isLoading = true;
   String _searchQuery = '';
+  String _sortBy = 'newest'; // 'newest', 'oldest'
 
   @override
   void initState() {
@@ -26,64 +29,293 @@ class _PostsManagementScreenState extends State<PostsManagementScreen> {
     setState(() {
       _isLoading = true;
     });
-
     try {
-      final posts = await _adminService.getAllPosts();
+      final posts = await widget.adminService.getAllPosts();
       setState(() {
         _posts = posts;
+        _filterAndSortPosts();
+        _isLoading = false;
       });
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to load posts')));
-    } finally {
+      print('Error loading posts: $e');
       setState(() {
         _isLoading = false;
       });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load posts')));
     }
   }
 
-  List<Map<String, dynamic>> get _filteredPosts {
-    if (_searchQuery.isEmpty) {
-      return _posts;
+  void _filterAndSortPosts() {
+    setState(() {
+      // Filter posts
+      _filteredPosts =
+          _posts.where((post) {
+            return post['caption'].toString().toLowerCase().contains(
+                  _searchQuery.toLowerCase(),
+                ) ||
+                post['username'].toString().toLowerCase().contains(
+                  _searchQuery.toLowerCase(),
+                );
+          }).toList();
+
+      // Sort posts
+      _filteredPosts.sort((a, b) {
+        final DateTime aTime = a['postTime'].toDate();
+        final DateTime bTime = b['postTime'].toDate();
+        return _sortBy == 'newest'
+            ? bTime.compareTo(aTime)
+            : aTime.compareTo(bTime);
+      });
+    });
+  }
+
+  Future<void> _deletePost(String postId, String username) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text('Delete Post'),
+            content: Text(
+              'Are you sure you want to delete this post by $username?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text('CANCEL'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text('DELETE'),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed == true) {
+      setState(() {
+        _isLoading = true;
+      });
+      try {
+        await widget.adminService.deletePost(postId);
+        await _loadPosts();
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Post deleted successfully')));
+      } catch (e) {
+        print('Error deleting post: $e');
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to delete post')));
+      }
     }
+  }
 
-    return _posts.where((post) {
-      final caption = post['caption']?.toString().toLowerCase() ?? '';
-      final username = post['username']?.toString().toLowerCase() ?? '';
-      final userId = post['userId']?.toString().toLowerCase() ?? '';
-
-      return caption.contains(_searchQuery.toLowerCase()) ||
-          username.contains(_searchQuery.toLowerCase()) ||
-          userId.contains(_searchQuery.toLowerCase());
-    }).toList();
+  void _showPostDetails(Map<String, dynamic> post) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Container(
+              width: MediaQuery.of(context).size.width * 0.7,
+              padding: EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundImage:
+                            post['avatarUrl'] != null
+                                ? NetworkImage(post['avatarUrl'])
+                                : null,
+                        child:
+                            post['avatarUrl'] == null
+                                ? Text(post['username'][0].toUpperCase())
+                                : null,
+                      ),
+                      SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            post['username'],
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          Text(
+                            DateFormat(
+                              'MMM d, yyyy - HH:mm',
+                            ).format(post['postTime'].toDate()),
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Spacer(),
+                      IconButton(
+                        icon: Icon(Icons.delete, color: Colors.red),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          _deletePost(post['postId'], post['username']);
+                        },
+                        tooltip: 'Delete Post',
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16),
+                  if (post['imageUrl'] != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        post['imageUrl'],
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: 300,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            height: 300,
+                            width: double.infinity,
+                            color: Colors.grey[200],
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                value:
+                                    loadingProgress.expectedTotalBytes != null
+                                        ? loadingProgress
+                                                .cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            height: 300,
+                            width: double.infinity,
+                            color: Colors.grey[200],
+                            child: Center(
+                              child: Icon(
+                                Icons.error,
+                                color: Colors.red,
+                                size: 48,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  SizedBox(height: 16),
+                  Text(post['caption'] ?? '', style: TextStyle(fontSize: 16)),
+                  SizedBox(height: 16),
+                  Text(
+                    'Post ID: ${post['postId']}',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  ),
+                  Text(
+                    'User ID: ${post['uid']}',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  ),
+                  SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text('CLOSE'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Post Management'),
-        actions: [IconButton(icon: Icon(Icons.refresh), onPressed: _loadPosts)],
-      ),
       body: Column(
         children: [
           Padding(
             padding: EdgeInsets.all(16),
-            child: TextField(
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value;
-                });
-              },
-              decoration: InputDecoration(
-                hintText: 'Search posts...',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Posts Management',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 ),
-                contentPadding: EdgeInsets.symmetric(vertical: 12),
-              ),
+                SizedBox(height: 16),
+                TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Search by caption or username',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                      _filterAndSortPosts();
+                    });
+                  },
+                ),
+                SizedBox(height: 8),
+                Row(
+                  children: [
+                    ChoiceChip(
+                      label: Text('Newest First'),
+                      selected: _sortBy == 'newest',
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() {
+                            _sortBy = 'newest';
+                            _filterAndSortPosts();
+                          });
+                        }
+                      },
+                    ),
+                    SizedBox(width: 8),
+                    ChoiceChip(
+                      label: Text('Oldest First'),
+                      selected: _sortBy == 'oldest',
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() {
+                            _sortBy = 'oldest';
+                            _filterAndSortPosts();
+                          });
+                        }
+                      },
+                    ),
+                    Spacer(),
+                    Text(
+                      '${_filteredPosts.length} posts',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -91,151 +323,172 @@ class _PostsManagementScreenState extends State<PostsManagementScreen> {
                 _isLoading
                     ? Center(child: CircularProgressIndicator())
                     : _filteredPosts.isEmpty
-                    ? Center(child: Text('No posts found'))
-                    : ListView.builder(
-                      itemCount: _filteredPosts.length,
-                      itemBuilder: (context, index) {
-                        final post = _filteredPosts[index];
-                        return _buildPostCard(post);
-                      },
+                    ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.photo_library_outlined,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'No posts found',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                    : RefreshIndicator(
+                      onRefresh: _loadPosts,
+                      child: GridView.builder(
+                        padding: EdgeInsets.all(8),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          childAspectRatio: 1,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                        ),
+                        itemCount: _filteredPosts.length,
+                        itemBuilder: (context, index) {
+                          final post = _filteredPosts[index];
+                          return GestureDetector(
+                            onTap: () => _showPostDetails(post),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child:
+                                      post['imageUrl'] != null
+                                          ? Image.network(
+                                            post['imageUrl'],
+                                            fit: BoxFit.cover,
+                                            loadingBuilder: (
+                                              context,
+                                              child,
+                                              loadingProgress,
+                                            ) {
+                                              if (loadingProgress == null)
+                                                return child;
+                                              return Container(
+                                                color: Colors.grey[200],
+                                                child: Center(
+                                                  child: CircularProgressIndicator(
+                                                    value:
+                                                        loadingProgress
+                                                                    .expectedTotalBytes !=
+                                                                null
+                                                            ? loadingProgress
+                                                                    .cumulativeBytesLoaded /
+                                                                loadingProgress
+                                                                    .expectedTotalBytes!
+                                                            : null,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                            errorBuilder: (
+                                              context,
+                                              error,
+                                              stackTrace,
+                                            ) {
+                                              return Container(
+                                                color: Colors.grey[200],
+                                                child: Center(
+                                                  child: Icon(
+                                                    Icons.error,
+                                                    color: Colors.red,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          )
+                                          : Container(
+                                            color: Colors.grey[200],
+                                            child: Center(
+                                              child: Icon(
+                                                Icons.photo,
+                                                color: Colors.grey[400],
+                                              ),
+                                            ),
+                                          ),
+                                ),
+                                Positioned(
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.bottomCenter,
+                                        end: Alignment.topCenter,
+                                        colors: [
+                                          Colors.black.withOpacity(0.7),
+                                          Colors.transparent,
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.only(
+                                        bottomLeft: Radius.circular(8),
+                                        bottomRight: Radius.circular(8),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            post['username'],
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.delete_outline,
+                                            color: Colors.white,
+                                            size: 18,
+                                          ),
+                                          onPressed:
+                                              () => _deletePost(
+                                                post['postId'],
+                                                post['username'],
+                                              ),
+                                          constraints: BoxConstraints(),
+                                          padding: EdgeInsets.all(0),
+                                          tooltip: 'Delete Post',
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                     ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildPostCard(Map<String, dynamic> post) {
-    final DateTime? postDate =
-        post['createdAt'] != null
-            ? (post['createdAt'] as Timestamp).toDate()
-            : null;
-
-    final String dateString =
-        postDate != null
-            ? '${postDate.day}/${postDate.month}/${postDate.year} ${postDate.hour}:${postDate.minute}'
-            : 'Unknown date';
-
-    return Card(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Post header with user info
-          ListTile(
-            leading: CircleAvatar(
-              backgroundImage:
-                  post['userImageUrl'] != null &&
-                          post['userImageUrl'].isNotEmpty
-                      ? NetworkImage(post['userImageUrl'])
-                      : null,
-              child:
-                  post['userImageUrl'] == null || post['userImageUrl'].isEmpty
-                      ? Icon(Icons.person)
-                      : null,
-            ),
-            title: Text(post['username'] ?? 'Unknown user'),
-            subtitle: Text(dateString),
-            trailing: IconButton(
-              icon: Icon(Icons.delete, color: Colors.red),
-              onPressed: () => _showDeleteConfirmation(post),
-            ),
-          ),
-
-          // Post image
-          if (post['imageUrl'] != null && post['imageUrl'].isNotEmpty)
-            Container(
-              height: 200,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                image: DecorationImage(
-                  image: NetworkImage(post['imageUrl']),
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ),
-
-          // Caption
-          if (post['caption'] != null && post['caption'].isNotEmpty)
-            Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(post['caption'], style: TextStyle(fontSize: 16)),
-            ),
-
-          // Post actions
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.favorite, color: Colors.red),
-                    SizedBox(width: 4),
-                    Text('${post['likes']?.length ?? 0}'),
-                  ],
-                ),
-                SizedBox(width: 16),
-                Row(
-                  children: [
-                    Icon(Icons.comment),
-                    SizedBox(width: 4),
-                    Text('${post['commentCount'] ?? 0}'),
-                  ],
-                ),
-                Spacer(),
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => PostDetailScreen(post: post),
-                      ),
-                    ).then((_) => _loadPosts());
-                  },
-                  child: Text('View Details'),
-                ),
-              ],
-            ),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton(
+        onPressed: _loadPosts,
+        child: Icon(Icons.refresh),
+        tooltip: 'Refresh',
       ),
-    );
-  }
-
-  void _showDeleteConfirmation(Map<String, dynamic> post) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Delete Post'),
-            content: Text(
-              'Are you sure you want to delete this post? This action cannot be undone.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  Navigator.pop(context);
-                  try {
-                    await _adminService.deletePost(post['postId']);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Post deleted successfully')),
-                    );
-                    _loadPosts();
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to delete post')),
-                    );
-                  }
-                },
-                child: Text('Delete', style: TextStyle(color: Colors.red)),
-              ),
-            ],
-          ),
     );
   }
 }

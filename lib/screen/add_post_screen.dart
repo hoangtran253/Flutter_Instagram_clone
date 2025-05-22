@@ -8,9 +8,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:camera/camera.dart';
 
 class AddPostScreen extends StatefulWidget {
-  const AddPostScreen({super.key});
+  final Uint8List? capturedImageData;
+
+  const AddPostScreen({super.key, this.capturedImageData});
 
   @override
   State<AddPostScreen> createState() => _AddPostScreenState();
@@ -26,11 +29,20 @@ class _AddPostScreenState extends State<AddPostScreen> {
 
   String? _username;
   bool _isLoading = false;
+  bool _isImageSelected = false;
 
   @override
   void initState() {
     super.initState();
     _fetchUserData();
+
+    // If image was captured from camera, use it
+    if (widget.capturedImageData != null) {
+      setState(() {
+        _imageData = widget.capturedImageData;
+        _isImageSelected = true;
+      });
+    }
   }
 
   // Lấy thông tin người dùng từ Firestore
@@ -58,8 +70,35 @@ class _AddPostScreenState extends State<AddPostScreen> {
       final bytes = await picked.readAsBytes();
       setState(() {
         _imageData = bytes;
+        _isImageSelected = true;
       });
     }
+  }
+
+  // New method to take photo directly
+  Future<void> _takePicture() async {
+    final cameras = await availableCameras();
+    if (cameras.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No camera available')));
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder:
+            (context) => CameraPreviewScreen(
+              camera: cameras.first,
+              onImageCaptured: (imageData) {
+                setState(() {
+                  _imageData = imageData;
+                  _isImageSelected = true;
+                });
+              },
+            ),
+      ),
+    );
   }
 
   // Tải ảnh lên Cloudinary
@@ -91,6 +130,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
   }
 
   // Xử lý khi người dùng đăng bài
+  // In _AddPostScreenState class
   Future<void> _handlePost() async {
     if (_imageData == null || _username == null) return;
     setState(() {
@@ -101,16 +141,24 @@ class _AddPostScreenState extends State<AddPostScreen> {
     String? imageUrl = await uploadToCloudinary(bytes);
 
     if (imageUrl != null) {
+      // Create a new post document with a generated ID
+      DocumentReference postRef =
+          FirebaseFirestore.instance.collection('posts').doc();
+      String postId = postRef.id;
+
       final post = {
+        'postId': postId, // Add postId to the post document
         'uid': _auth.currentUser!.uid,
         'username': _username,
         'caption': _captionController.text,
         'imageUrl': imageUrl,
         'avatarUrl': _avatarUrl,
         'postTime': FieldValue.serverTimestamp(),
+        'likes': [], // Array to store user IDs who liked the post
+        'comments': [], // Array to store comment documents
       };
 
-      await FirebaseFirestore.instance.collection('posts').add(post);
+      await postRef.set(post);
 
       ScaffoldMessenger.of(
         context,
@@ -118,9 +166,13 @@ class _AddPostScreenState extends State<AddPostScreen> {
 
       setState(() {
         _imageData = null;
+        _isImageSelected = false;
         _captionController.clear();
         _isLoading = false;
       });
+
+      // Navigate back to the feed screen
+      Navigator.of(context).popUntil((route) => route.isFirst);
     } else {
       ScaffoldMessenger.of(
         context,
@@ -139,12 +191,26 @@ class _AddPostScreenState extends State<AddPostScreen> {
       appBar: AppBar(
         title: const Text(
           'Tạo bài viết',
-          style: TextStyle(color: Colors.black),
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
         ),
         backgroundColor: Colors.white,
         elevation: 1,
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.black),
+        actions: [
+          TextButton(
+            onPressed: _isImageSelected && !_isLoading ? _handlePost : null,
+            child: Text(
+              "Đăng",
+              style: TextStyle(
+                color:
+                    _isImageSelected && !_isLoading ? Colors.blue : Colors.grey,
+                fontWeight: FontWeight.bold,
+                fontSize: 16.sp,
+              ),
+            ),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -152,43 +218,12 @@ class _AddPostScreenState extends State<AddPostScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Hiển thị ảnh
-              AspectRatio(
-                aspectRatio: 1,
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(12.r),
-                  ),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child:
-                        _imageData != null
-                            ? ClipRRect(
-                              borderRadius: BorderRadius.circular(12.r),
-                              child: Image.memory(
-                                _imageData!,
-                                key: ValueKey(_imageData),
-                                fit: BoxFit.cover,
-                              ),
-                            )
-                            : Center(
-                              child: Text(
-                                'Chưa chọn ảnh',
-                                style: TextStyle(fontSize: 16.sp),
-                              ),
-                            ),
-                  ),
-                ),
-              ),
-              SizedBox(height: 16.h),
-
               // Thông tin người dùng
               if (_username != null)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: CircleAvatar(
+                    radius: 20.r,
                     backgroundImage:
                         _avatarUrl != null
                             ? NetworkImage(_avatarUrl!)
@@ -203,74 +238,322 @@ class _AddPostScreenState extends State<AddPostScreen> {
                     ),
                   ),
                 ),
-              SizedBox(height: 10.h),
+              SizedBox(height: 12.h),
 
               // Caption
               TextField(
                 controller: _captionController,
                 maxLines: null,
                 decoration: InputDecoration(
-                  hintText: 'Bạn đang nghĩ gì?',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.r),
-                  ),
+                  hintText: 'Viết chú thích...',
+                  border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(
-                    horizontal: 12.w,
+                    horizontal: 4.w,
                     vertical: 10.h,
                   ),
                 ),
               ),
               SizedBox(height: 16.h),
 
-              // Nút đăng bài
-              SizedBox(
-                width: double.infinity,
-                height: 45.h,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _handlePost,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10.r),
-                    ),
+              // Hiển thị ảnh
+              GestureDetector(
+                onTap: _pickImage,
+                child: Container(
+                  width: double.infinity,
+                  height: 360.h,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(12.r),
+                    border: Border.all(color: Colors.grey.shade300, width: 1),
                   ),
-                  child:
-                      _isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text(
-                            "Đăng bài",
-                            style: TextStyle(color: Colors.white),
-                          ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child:
+                        _imageData != null
+                            ? ClipRRect(
+                              borderRadius: BorderRadius.circular(12.r),
+                              child: Image.memory(
+                                _imageData!,
+                                key: ValueKey(_imageData),
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                              ),
+                            )
+                            : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.add_photo_alternate_outlined,
+                                  size: 64.sp,
+                                  color: Colors.grey.shade400,
+                                ),
+                                SizedBox(height: 12.h),
+                                Text(
+                                  'Chọn ảnh từ thư viện',
+                                  style: TextStyle(
+                                    fontSize: 16.sp,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                  ),
                 ),
               ),
               SizedBox(height: 24.h),
 
-              // Chọn ảnh
-              Text(
-                "Ảnh từ thiết bị",
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15.sp),
+              // Media source options
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _mediaSourceOption(
+                    icon: Icons.photo_library,
+                    label: 'Thư viện',
+                    onTap: _pickImage,
+                  ),
+                  _mediaSourceOption(
+                    icon: Icons.camera_alt,
+                    label: 'Chụp ảnh',
+                    onTap: _takePicture,
+                  ),
+                ],
               ),
-              SizedBox(height: 8.h),
-              Center(
-                child: OutlinedButton.icon(
-                  onPressed: _pickImage,
-                  icon: const Icon(Icons.photo),
-                  label: const Text("Chọn ảnh"),
-                  style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 20.w,
-                      vertical: 10.h,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8.r),
-                    ),
+
+              SizedBox(height: 20.h),
+
+              Divider(color: Colors.grey.shade300),
+
+              SizedBox(height: 20.h),
+
+              if (_isLoading)
+                Center(
+                  child: Column(
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 12.h),
+                      Text(
+                        'Đang đăng bài...',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              SizedBox(height: 70.h),
+              SizedBox(height: 20.h),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _mediaSourceOption({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 150.w,
+        padding: EdgeInsets.symmetric(vertical: 16.h),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 32.sp, color: Colors.black87),
+            SizedBox(height: 8.h),
+            Text(
+              label,
+              style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// CameraPreviewScreen for taking photos directly in the app
+class CameraPreviewScreen extends StatefulWidget {
+  final CameraDescription camera;
+  final Function(Uint8List) onImageCaptured;
+
+  const CameraPreviewScreen({
+    Key? key,
+    required this.camera,
+    required this.onImageCaptured,
+  }) : super(key: key);
+
+  @override
+  State<CameraPreviewScreen> createState() => _CameraPreviewScreenState();
+}
+
+class _CameraPreviewScreenState extends State<CameraPreviewScreen>
+    with WidgetsBindingObserver {
+  late CameraController _controller;
+  late Future<void> _initializeControllerFuture;
+  bool _isRearCameraSelected = true;
+  bool _isFlashOn = false;
+  List<CameraDescription> cameras = [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    cameras = await availableCameras();
+    _controller = CameraController(
+      _isRearCameraSelected ? cameras.first : cameras.last,
+      ResolutionPreset.high,
+    );
+    _initializeControllerFuture = _controller.initialize();
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive) {
+      _controller.dispose();
+    } else if (state == AppLifecycleState.resumed) {
+      _initCamera();
+    }
+  }
+
+  Future<void> _takePicture() async {
+    try {
+      await _initializeControllerFuture;
+      final image = await _controller.takePicture();
+      final bytes = await image.readAsBytes();
+      widget.onImageCaptured(bytes);
+      Navigator.pop(context);
+    } catch (e) {
+      print(e);
+    }
+  }
+
+  void _toggleCamera() async {
+    setState(() {
+      _isRearCameraSelected = !_isRearCameraSelected;
+    });
+    await _controller.dispose();
+    _controller = CameraController(
+      _isRearCameraSelected ? cameras.first : cameras.last,
+      ResolutionPreset.high,
+    );
+    _initializeControllerFuture = _controller.initialize();
+  }
+
+  void _toggleFlash() async {
+    setState(() {
+      _isFlashOn = !_isFlashOn;
+    });
+    await _controller.setFlashMode(
+      _isFlashOn ? FlashMode.torch : FlashMode.off,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: FutureBuilder<void>(
+        future: _initializeControllerFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done) {
+            return Stack(
+              children: [
+                Positioned.fill(child: CameraPreview(_controller)),
+                // Top controls
+                Positioned(
+                  top: 40.h,
+                  left: 16.w,
+                  right: 16.w,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 28.sp,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _toggleFlash,
+                        icon: Icon(
+                          _isFlashOn ? Icons.flash_on : Icons.flash_off,
+                          color: Colors.white,
+                          size: 28.sp,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Bottom controls
+                Positioned(
+                  bottom: 32.h,
+                  left: 0,
+                  right: 0,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          Icons.flip_camera_ios,
+                          color: Colors.white,
+                          size: 30.sp,
+                        ),
+                        onPressed: _toggleCamera,
+                      ),
+                      GestureDetector(
+                        onTap: _takePicture,
+                        child: Container(
+                          height: 80.h,
+                          width: 80.w,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 4.w),
+                          ),
+                          child: Center(
+                            child: Container(
+                              height: 70.h,
+                              width: 70.w,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 48.w),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          } else {
+            return Center(child: CircularProgressIndicator());
+          }
+        },
       ),
     );
   }

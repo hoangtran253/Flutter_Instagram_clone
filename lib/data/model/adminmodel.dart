@@ -6,10 +6,17 @@ class AdminService {
   // Fetch all users
   Future<List<Map<String, dynamic>>> getAllUsers() async {
     try {
-      final QuerySnapshot snapshot = await _firestore.collection('users').get();
+      final snapshot = await _firestore.collection('users').get();
       return snapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
-        return {'uid': doc.id, ...data};
+        return {
+          'uid': doc.id,
+          'email': data['email'],
+          'username': data['username'],
+          'bio': data['bio'],
+          'avatarUrl': data['avatarUrl'],
+          'isActive': data['isActive'] ?? true,
+        };
       }).toList();
     } catch (e) {
       print('Error fetching users: $e');
@@ -20,10 +27,18 @@ class AdminService {
   // Fetch all posts
   Future<List<Map<String, dynamic>>> getAllPosts() async {
     try {
-      final QuerySnapshot snapshot = await _firestore.collection('posts').get();
+      final snapshot = await _firestore.collection('posts').get();
       return snapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
-        return {'postId': doc.id, ...data};
+        return {
+          'postId': doc.id,
+          'uid': data['uid'],
+          'username': data['username'],
+          'caption': data['caption'],
+          'imageUrl': data['imageUrl'],
+          'avatarUrl': data['avatarUrl'],
+          'postTime': data['postTime'],
+        };
       }).toList();
     } catch (e) {
       print('Error fetching posts: $e');
@@ -31,38 +46,65 @@ class AdminService {
     }
   }
 
-  // Delete user
+  // Fetch all reels
+  Future<List<Map<String, dynamic>>> getAllReels() async {
+    try {
+      final snapshot = await _firestore.collection('reels').get();
+      return snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return {
+          'reelId': doc.id,
+          'uid': data['uid'],
+          'username': data['username'],
+          'caption': data['caption'],
+          'videoUrl': data['videoUrl'],
+          'thumbnailUrl': data['thumbnailUrl'],
+          'avatarUrl': data['avatarUrl'],
+          'postTime': data['postTime'],
+          'likes': data['likes'] ?? [],
+          'comments': data['comments'] ?? 0,
+        };
+      }).toList();
+    } catch (e) {
+      print('Error fetching reels: $e');
+      return [];
+    }
+  }
+
+  // Delete user and related posts & reels
   Future<void> deleteUser(String uid) async {
     try {
-      // Delete user document
       await _firestore.collection('users').doc(uid).delete();
 
-      // Find and delete user's posts
-      final QuerySnapshot userPosts =
+      final posts =
           await _firestore
               .collection('posts')
-              .where('userId', isEqualTo: uid)
+              .where('uid', isEqualTo: uid)
               .get();
-
-      for (var doc in userPosts.docs) {
+      for (var doc in posts.docs) {
         await _firestore.collection('posts').doc(doc.id).delete();
       }
 
-      // Note: This doesn't delete the actual Firebase Auth account
-      // You would need to use Firebase Admin SDK or Cloud Functions for that
+      final reels =
+          await _firestore
+              .collection('reels')
+              .where('uid', isEqualTo: uid)
+              .get();
+      for (var doc in reels.docs) {
+        await _firestore.collection('reels').doc(doc.id).delete();
+      }
     } catch (e) {
       print('Error deleting user: $e');
       throw Exception('Failed to delete user');
     }
   }
 
-  // Delete post
+  // Delete post and comments
   Future<void> deletePost(String postId) async {
     try {
       await _firestore.collection('posts').doc(postId).delete();
 
-      // Also delete any comments related to this post
-      final QuerySnapshot comments =
+      final comments =
           await _firestore
               .collection('comments')
               .where('postId', isEqualTo: postId)
@@ -77,12 +119,32 @@ class AdminService {
     }
   }
 
-  // Update user
+  // Delete reel and comments
+  Future<void> deleteReel(String reelId) async {
+    try {
+      await _firestore.collection('reels').doc(reelId).delete();
+
+      final comments =
+          await _firestore
+              .collection('comments')
+              .where('reelId', isEqualTo: reelId)
+              .get();
+
+      for (var doc in comments.docs) {
+        await _firestore.collection('comments').doc(doc.id).delete();
+      }
+    } catch (e) {
+      print('Error deleting reel: $e');
+      throw Exception('Failed to delete reel');
+    }
+  }
+
+  // Update user info (username, bio, avatar, isActive)
   Future<void> updateUserInfo({
     required String uid,
     String? username,
     String? bio,
-    String? imageUrl,
+    String? avatarUrl,
     bool? isActive,
   }) async {
     try {
@@ -96,8 +158,8 @@ class AdminService {
         updateData['bio'] = bio;
       }
 
-      if (imageUrl != null) {
-        updateData['imageUrl'] = imageUrl;
+      if (avatarUrl != null) {
+        updateData['avatarUrl'] = avatarUrl;
       }
 
       if (isActive != null) {
@@ -113,29 +175,63 @@ class AdminService {
     }
   }
 
-  // Get basic analytics
+  // Analytics
   Future<Map<String, dynamic>> getAnalytics() async {
     try {
       final userCount = await _firestore.collection('users').count().get();
       final postCount = await _firestore.collection('posts').count().get();
+      final reelCount = await _firestore.collection('reels').count().get();
 
-      // Get posts from the last 7 days
-      final DateTime sevenDaysAgo = DateTime.now().subtract(Duration(days: 7));
+      final activeUsersSnapshot =
+          await _firestore
+              .collection('users')
+              .where('isActive', isEqualTo: true)
+              .count()
+              .get();
+
+      final inactiveUsersSnapshot =
+          await _firestore
+              .collection('users')
+              .where('isActive', isEqualTo: false)
+              .count()
+              .get();
+
+      final sevenDaysAgo = DateTime.now().subtract(Duration(days: 7));
+
       final recentPosts =
           await _firestore
               .collection('posts')
-              .where('createdAt', isGreaterThan: sevenDaysAgo)
+              .where('postTime', isGreaterThan: sevenDaysAgo)
+              .count()
+              .get();
+
+      final recentReels =
+          await _firestore
+              .collection('reels')
+              .where('postTime', isGreaterThan: sevenDaysAgo)
               .count()
               .get();
 
       return {
         'totalUsers': userCount.count,
         'totalPosts': postCount.count,
+        'totalReels': reelCount.count,
         'recentPosts': recentPosts.count,
+        'recentReels': recentReels.count,
+        'activeUsers': activeUsersSnapshot.count,
+        'inactiveUsers': inactiveUsersSnapshot.count,
       };
     } catch (e) {
       print('Error getting analytics: $e');
-      return {'totalUsers': 0, 'totalPosts': 0, 'recentPosts': 0};
+      return {
+        'totalUsers': 0,
+        'totalPosts': 0,
+        'totalReels': 0,
+        'recentPosts': 0,
+        'recentReels': 0,
+        'activeUsers': 0,
+        'inactiveUsers': 0,
+      };
     }
   }
 }
