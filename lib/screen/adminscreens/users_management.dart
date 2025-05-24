@@ -287,54 +287,57 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
                   },
                 ),
                 SizedBox(height: 8),
-                Row(
-                  children: [
-                    FilterChip(
-                      label: Text('Active Users'),
-                      selected: _showOnlyActive,
-                      onSelected: (selected) {
-                        setState(() {
-                          _showOnlyActive = selected;
-                          if (selected) {
-                            _showOnlyInactive = false;
-                          }
-                          _filterUsers();
-                        });
-                      },
-                      avatar: Icon(
-                        Icons.check_circle,
-                        color: _showOnlyActive ? Colors.white : Colors.green,
-                        size: 18,
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      FilterChip(
+                        label: Text('Active Users'),
+                        selected: _showOnlyActive,
+                        onSelected: (selected) {
+                          setState(() {
+                            _showOnlyActive = selected;
+                            if (selected) {
+                              _showOnlyInactive = false;
+                            }
+                            _filterUsers();
+                          });
+                        },
+                        avatar: Icon(
+                          Icons.check_circle,
+                          color: _showOnlyActive ? Colors.white : Colors.green,
+                          size: 18,
+                        ),
                       ),
-                    ),
-                    SizedBox(width: 8),
-                    FilterChip(
-                      label: Text('Inactive Users'),
-                      selected: _showOnlyInactive,
-                      onSelected: (selected) {
-                        setState(() {
-                          _showOnlyInactive = selected;
-                          if (selected) {
-                            _showOnlyActive = false;
-                          }
-                          _filterUsers();
-                        });
-                      },
-                      avatar: Icon(
-                        Icons.cancel,
-                        color: _showOnlyInactive ? Colors.white : Colors.red,
-                        size: 18,
+                      SizedBox(width: 8),
+                      FilterChip(
+                        label: Text('Inactive Users'),
+                        selected: _showOnlyInactive,
+                        onSelected: (selected) {
+                          setState(() {
+                            _showOnlyInactive = selected;
+                            if (selected) {
+                              _showOnlyActive = false;
+                            }
+                            _filterUsers();
+                          });
+                        },
+                        avatar: Icon(
+                          Icons.cancel,
+                          color: _showOnlyInactive ? Colors.white : Colors.red,
+                          size: 18,
+                        ),
                       ),
-                    ),
-                    Spacer(),
-                    Text(
-                      '${_filteredUsers.length} users',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[600],
+                      SizedBox(width: 5.w),
+                      Text(
+                        '${_filteredUsers.length} users',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[600],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -372,85 +375,117 @@ class _UsersManagementPageState extends State<UsersManagementPage> {
                           final user = _filteredUsers[index];
                           return Card(
                             margin: EdgeInsets.symmetric(
-                              horizontal: 16.h,
+                              horizontal: 8.h,
                               vertical: 4.w,
                             ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundImage:
-                                    user['avatarUrl'] != null
-                                        ? NetworkImage(user['avatarUrl'])
-                                        : null,
-                                child:
-                                    user['avatarUrl'] == null
-                                        ? Text(
-                                          user['username'][0].toUpperCase(),
-                                        )
-                                        : null,
+                            child: Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
                               ),
-                              title: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: [
-                                    Text(user['username']),
-                                    SizedBox(width: 8),
-                                    Icon(
-                                      user['isActive'] == true
-                                          ? Icons.check_circle
-                                          : Icons.cancel,
-                                      color:
-                                          user['isActive'] == true
-                                              ? Colors.green
-                                              : Colors.red,
-                                      size: 12,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              subtitle: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Text(user['email']),
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  IconButton(
-                                    icon: Icon(Icons.edit),
-                                    onPressed: () => _showEditUserDialog(user),
-                                    tooltip: 'Edit User',
+                                  CircleAvatar(
+                                    backgroundImage:
+                                        user['avatarUrl'] != null
+                                            ? NetworkImage(user['avatarUrl'])
+                                            : null,
+                                    child:
+                                        user['avatarUrl'] == null
+                                            ? Text(
+                                              user['username'][0].toUpperCase(),
+                                            )
+                                            : null,
                                   ),
-                                  IconButton(
-                                    icon: Icon(
-                                      user['isActive'] == true
-                                          ? Icons.block
-                                          : Icons.check_circle_outline,
-                                      color:
-                                          user['isActive'] == true
-                                              ? Colors.orange
-                                              : Colors.green,
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                user['username'],
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                            Icon(
+                                              user['isActive'] == true
+                                                  ? Icons.check_circle
+                                                  : Icons.cancel,
+                                              color:
+                                                  user['isActive'] == true
+                                                      ? Colors.green
+                                                      : Colors.red,
+                                              size: 14,
+                                            ),
+                                          ],
+                                        ),
+                                        SizedBox(height: 4),
+                                        Text(
+                                          user['email'],
+                                          style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
                                     ),
-                                    onPressed:
-                                        () => _toggleUserStatus(
-                                          user['uid'],
-                                          user['isActive'] == true,
-                                          user['username'],
-                                        ),
-                                    tooltip:
-                                        user['isActive'] == true
-                                            ? 'Deactivate User'
-                                            : 'Activate User',
                                   ),
-                                  IconButton(
-                                    icon: Icon(Icons.delete, color: Colors.red),
-                                    onPressed:
-                                        () => _deleteUser(
-                                          user['uid'],
-                                          user['username'],
+                                  SizedBox(width: 8),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Row(
+                                      children: [
+                                        IconButton(
+                                          icon: Icon(Icons.edit),
+                                          onPressed:
+                                              () => _showEditUserDialog(user),
+                                          tooltip: 'Edit User',
                                         ),
-                                    tooltip: 'Delete User',
+                                        IconButton(
+                                          icon: Icon(
+                                            user['isActive'] == true
+                                                ? Icons.block
+                                                : Icons.check_circle_outline,
+                                            color:
+                                                user['isActive'] == true
+                                                    ? Colors.orange
+                                                    : Colors.green,
+                                          ),
+                                          onPressed:
+                                              () => _toggleUserStatus(
+                                                user['uid'],
+                                                user['isActive'] == true,
+                                                user['username'],
+                                              ),
+                                          tooltip:
+                                              user['isActive'] == true
+                                                  ? 'Deactivate User'
+                                                  : 'Activate User',
+                                        ),
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.delete,
+                                            color: Colors.red,
+                                          ),
+                                          onPressed:
+                                              () => _deleteUser(
+                                                user['uid'],
+                                                user['username'],
+                                              ),
+                                          tooltip: 'Delete User',
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),

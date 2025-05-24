@@ -50,7 +50,10 @@ class _ReelsScreenState extends State<ReelsScreen> {
       final reelsData =
           snapshot.docs.map((doc) {
             _reelIds.add(doc.id); // Store the document ID
-            return doc.data() as Map<String, dynamic>;
+            final data = doc.data() as Map<String, dynamic>;
+            // Add the document ID to the data for easier access
+            data['reelId'] = doc.id;
+            return data;
           }).toList();
 
       setState(() {
@@ -90,6 +93,31 @@ class _ReelsScreenState extends State<ReelsScreen> {
     );
   }
 
+  // Method to refresh specific reel data (for like/comment updates)
+  Future<void> _refreshReelData(int index) async {
+    if (index < 0 || index >= _reelIds.length) return;
+
+    try {
+      final reelId = _reelIds[index];
+      DocumentSnapshot reelDoc =
+          await FirebaseFirestore.instance
+              .collection('reels')
+              .doc(reelId)
+              .get();
+
+      if (reelDoc.exists) {
+        final updatedData = reelDoc.data() as Map<String, dynamic>;
+        updatedData['reelId'] = reelId;
+
+        setState(() {
+          _reels[index] = updatedData;
+        });
+      }
+    } catch (e) {
+      print('Error refreshing reel data: $e');
+    }
+  }
+
   @override
   void dispose() {
     _pageController.dispose();
@@ -125,6 +153,7 @@ class _ReelsScreenState extends State<ReelsScreen> {
                         (_, index) => ReelItem(
                           reelData: _reels[index],
                           currentlyPlaying: index == _currentIndex,
+                          onDataChanged: () => _refreshReelData(index),
                         ),
                   ),
                   _buildHeader(),

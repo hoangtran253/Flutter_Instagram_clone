@@ -1,8 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_instagram_clone/screen/authprofile_screen.dart';
 import 'package:flutter_instagram_clone/screen/post_screen.dart';
-import 'package:flutter_instagram_clone/screen/profile_screen.dart';
 import 'package:flutter_instagram_clone/screen/reelsScreen.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
@@ -16,132 +17,259 @@ class ExploreScreen extends StatefulWidget {
 
 class _ExploreScreenState extends State<ExploreScreen>
     with SingleTickerProviderStateMixin {
-  final searchController = TextEditingController();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  bool _isSearching = false;
-  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
   late TabController _tabController;
 
   List<Map<String, dynamic>> _searchResults = [];
+  bool _isSearching = false;
   bool _isLoading = false;
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    searchController.addListener(_onSearchChanged);
+    _searchController.addListener(_onSearchChanged);
   }
 
   @override
   void dispose() {
-    searchController.removeListener(_onSearchChanged);
-    searchController.dispose();
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
     _tabController.dispose();
     super.dispose();
   }
 
   void _onSearchChanged() {
+    final query = _searchController.text.trim();
     setState(() {
-      _searchQuery = searchController.text.trim();
-      _isSearching = _searchQuery.isNotEmpty;
+      _searchQuery = query;
+      _isSearching = query.isNotEmpty;
     });
 
-    if (_isSearching) {
-      _performSearch();
-    } else {
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (_searchController.text == query) {
+        _performSearch(query);
+      }
+    });
+  }
+
+  Future<void> _performSearch(String query) async {
+    if (query.isEmpty) {
       setState(() {
         _searchResults = [];
+        _isSearching = false;
       });
-    }
-  }
-
-  Future<void> _performSearch() async {
-    final query = _searchQuery.trim().toLowerCase();
-    final List<Map<String, dynamic>> results = [];
-
-    // Lấy tất cả users
-    final usersSnapshot = await _firestore.collection('users').get();
-    for (var doc in usersSnapshot.docs) {
-      final userData = doc.data();
-      final username = userData['username']?.toString().toLowerCase() ?? '';
-      final fullName = userData['fullName']?.toString().toLowerCase() ?? '';
-      final bio = userData['bio']?.toString().toLowerCase() ?? '';
-
-      if (username.contains(query) ||
-          fullName.contains(query) ||
-          bio.contains(query)) {
-        results.add({
-          'id': doc.id,
-          'type': 'user',
-          'username': userData['username'],
-          'avatarUrl': userData['avatarUrl'],
-          'fullName': userData['fullName'],
-        });
-      }
-    }
-
-    // Lấy tất cả posts
-    final postsSnapshot = await _firestore.collection('posts').get();
-    for (var doc in postsSnapshot.docs) {
-      final postData = doc.data();
-      final caption = postData['caption']?.toString().toLowerCase() ?? '';
-
-      if (caption.contains(query)) {
-        postData['id'] = doc.id;
-        postData['type'] = 'post';
-        results.add(postData);
-      }
-    }
-
-    // Lấy tất cả reels
-    final reelsSnapshot = await _firestore.collection('reels').get();
-    for (var doc in reelsSnapshot.docs) {
-      final reelData = doc.data();
-      final caption = reelData['caption']?.toString().toLowerCase() ?? '';
-
-      if (caption.contains(query)) {
-        reelData['id'] = doc.id;
-        reelData['type'] = 'reel';
-        results.add(reelData);
-      }
+      return;
     }
 
     setState(() {
-      _searchResults = results;
+      _isLoading = true;
     });
+
+    try {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final List<Map<String, dynamic>> results = [];
+      final Set<String> userIds = {};
+
+      final normalizedQuery = query.toLowerCase();
+
+      final usersSnapshot = await _firestore.collection('users').get();
+
+      for (final doc in usersSnapshot.docs) {
+        if (doc.id == currentUser.uid) continue;
+
+        final data = doc.data();
+        final username = data['username']?.toString().toLowerCase() ?? '';
+        final bio = data['bio']?.toString().toLowerCase() ?? '';
+
+        if (username.contains(normalizedQuery) ||
+            bio.contains(normalizedQuery)) {
+          if (!userIds.contains(doc.id)) {
+            userIds.add(doc.id);
+            final resultData = data;
+            resultData['id'] = doc.id;
+            resultData['type'] = 'user';
+            results.add(resultData);
+          }
+        }
+      }
+
+      final postsSnapshot = await _firestore.collection('posts').get();
+
+      for (var doc in postsSnapshot.docs) {
+        final data = doc.data();
+        final caption = data['caption']?.toString().toLowerCase() ?? '';
+
+        if (caption.contains(normalizedQuery)) {
+          final resultData = data;
+          resultData['id'] = doc.id;
+          resultData['type'] = 'post';
+          results.add(resultData);
+        }
+      }
+
+      final reelsSnapshot = await _firestore.collection('reels').get();
+
+      for (var doc in reelsSnapshot.docs) {
+        final data = doc.data();
+        final caption = data['caption']?.toString().toLowerCase() ?? '';
+
+        if (caption.contains(normalizedQuery)) {
+          final resultData = data;
+          resultData['id'] = doc.id;
+          resultData['type'] = 'reel';
+          results.add(resultData);
+        }
+      }
+
+      results.sort((a, b) {
+        final aValue =
+            (a['username'] ?? a['caption'] ?? '').toString().toLowerCase();
+        final bValue =
+            (b['username'] ?? b['caption'] ?? '').toString().toLowerCase();
+
+        if (aValue.startsWith(normalizedQuery) &&
+            !bValue.startsWith(normalizedQuery)) {
+          return -1;
+        } else if (!aValue.startsWith(normalizedQuery) &&
+            bValue.startsWith(normalizedQuery)) {
+          return 1;
+        }
+
+        final aIndex = aValue.indexOf(normalizedQuery);
+        final bIndex = bValue.indexOf(normalizedQuery);
+
+        if (aIndex != bIndex) {
+          return aIndex.compareTo(bIndex);
+        }
+
+        return aValue.length.compareTo(bValue.length);
+      });
+
+      setState(() {
+        _searchResults = results;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error searching: $e');
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error occurred: $e')));
+    }
   }
 
-  void _navigateToProfile() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => ProfileScreen()),
-    );
+  Future<bool> _checkFollowStatus(String userId) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return false;
+
+    try {
+      final followDoc =
+          await _firestore
+              .collection('users')
+              .doc(currentUser.uid)
+              .collection('following')
+              .doc(userId)
+              .get();
+      return followDoc.exists;
+    } catch (e) {
+      print('Error checking follow status: $e');
+      return false;
+    }
   }
 
-  void _navigateToPost(Map<String, dynamic> postData) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder:
-            (context) => PostScreen(
-              username: postData['username'],
-              caption: postData['caption'],
-              imageUrl: postData['imageUrl'],
-              postTime: postData['postTime'],
-              avatarUrl: postData['avatarUrl'] ?? '',
-              postId: postData['id'],
-            ),
-      ),
-    );
+  Future<void> _toggleFollow(String userId, bool isCurrentlyFollowing) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) return;
+
+      final userData = userDoc.data()!;
+      final username = userData['username'] ?? '';
+      final avatarUrl = userData['avatarUrl'] ?? '';
+
+      final batch = _firestore.batch();
+
+      if (isCurrentlyFollowing) {
+        batch.delete(
+          _firestore
+              .collection('users')
+              .doc(currentUser.uid)
+              .collection('following')
+              .doc(userId),
+        );
+        batch.delete(
+          _firestore
+              .collection('users')
+              .doc(userId)
+              .collection('followers')
+              .doc(currentUser.uid),
+        );
+      } else {
+        batch.set(
+          _firestore
+              .collection('users')
+              .doc(currentUser.uid)
+              .collection('following')
+              .doc(userId),
+          {
+            'timestamp': FieldValue.serverTimestamp(),
+            'username': username,
+            'avatarUrl': avatarUrl,
+          },
+        );
+        batch.set(
+          _firestore
+              .collection('users')
+              .doc(userId)
+              .collection('followers')
+              .doc(currentUser.uid),
+          {'timestamp': FieldValue.serverTimestamp()},
+        );
+      }
+
+      await batch.commit();
+      setState(() {});
+    } catch (e) {
+      print('Error toggling follow: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error occurred: $e')));
+    }
   }
 
-  void _navigateToReel(String reelId) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ReelsScreen(initialReelId: reelId),
-      ),
-    );
+  // Format Timestamp to String, consistent with ProfileScreen
+  String _formatTimestamp(Timestamp? timestamp) {
+    if (timestamp == null) return 'Unknown time';
+    final DateTime dateTime = timestamp.toDate();
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inDays > 7) {
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    } else if (difference.inDays > 0) {
+      return '${difference.inDays} days ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} hours ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} minutes ago';
+    } else {
+      return 'Just now';
+    }
   }
 
   @override
@@ -180,21 +308,22 @@ class _ExploreScreenState extends State<ExploreScreen>
               SizedBox(width: 7.w),
               Expanded(
                 child: TextField(
-                  controller: searchController,
-                  decoration: const InputDecoration(
-                    hintText: 'Tìm kiếm người dùng, bài viết, reels',
-                    hintStyle: TextStyle(color: Colors.grey),
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search users, posts, reels',
+                    hintStyle: TextStyle(color: Colors.grey[600]),
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                   ),
-                  onSubmitted: (_) => _performSearch(),
+                  style: const TextStyle(color: Colors.black),
+                  autofocus: false,
                 ),
               ),
               if (_isSearching)
                 IconButton(
                   icon: Icon(Icons.clear, color: Colors.grey),
                   onPressed: () {
-                    searchController.clear();
+                    _searchController.clear();
                     setState(() {
                       _isSearching = false;
                       _searchResults = [];
@@ -216,9 +345,21 @@ class _ExploreScreenState extends State<ExploreScreen>
     if (_searchResults.isEmpty) {
       return Expanded(
         child: Center(
-          child: Text(
-            'Không tìm thấy kết quả cho "$_searchQuery"',
-            style: TextStyle(fontSize: 16.sp),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.person_search, size: 64, color: Colors.grey),
+              SizedBox(height: 16.h),
+              Text(
+                'No results found for "$_searchQuery"',
+                style: TextStyle(fontSize: 18.sp, color: Colors.grey[600]),
+              ),
+              SizedBox(height: 8.h),
+              Text(
+                'Try searching with a different keyword',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ],
           ),
         ),
       );
@@ -232,9 +373,9 @@ class _ExploreScreenState extends State<ExploreScreen>
             labelColor: Colors.black,
             unselectedLabelColor: Colors.grey,
             tabs: const [
-              Tab(text: 'Tất cả'),
-              Tab(text: 'Người dùng'),
-              Tab(text: 'Bài viết/Reels'),
+              Tab(text: 'All'),
+              Tab(text: 'Users'),
+              Tab(text: 'Posts/Reels'),
             ],
           ),
           Expanded(
@@ -255,9 +396,9 @@ class _ExploreScreenState extends State<ExploreScreen>
   Widget _buildAllResults() {
     return ListView.builder(
       itemCount: _searchResults.length,
+      padding: EdgeInsets.all(8.w),
       itemBuilder: (context, index) {
         final result = _searchResults[index];
-
         if (result['type'] == 'user') {
           return _buildUserListItem(result);
         } else if (result['type'] == 'post') {
@@ -265,7 +406,6 @@ class _ExploreScreenState extends State<ExploreScreen>
         } else if (result['type'] == 'reel') {
           return _buildReelListItem(result);
         }
-
         return const SizedBox.shrink();
       },
     );
@@ -274,13 +414,15 @@ class _ExploreScreenState extends State<ExploreScreen>
   Widget _buildUserResults() {
     final userResults =
         _searchResults.where((result) => result['type'] == 'user').toList();
-
     if (userResults.isEmpty) {
-      return Center(child: Text('Không tìm thấy người dùng'));
+      return Center(
+        child: Text('No users found', style: TextStyle(fontSize: 16.sp)),
+      );
     }
 
     return ListView.builder(
       itemCount: userResults.length,
+      padding: EdgeInsets.all(8.w),
       itemBuilder: (context, index) => _buildUserListItem(userResults[index]),
     );
   }
@@ -292,13 +434,18 @@ class _ExploreScreenState extends State<ExploreScreen>
               (result) => result['type'] == 'post' || result['type'] == 'reel',
             )
             .toList();
-
     if (contentResults.isEmpty) {
-      return Center(child: Text('Không tìm thấy bài viết hoặc reels'));
+      return Center(
+        child: Text(
+          'No posts or reels found',
+          style: TextStyle(fontSize: 16.sp),
+        ),
+      );
     }
 
     return ListView.builder(
       itemCount: contentResults.length,
+      padding: EdgeInsets.all(8.w),
       itemBuilder: (context, index) {
         final result = contentResults[index];
         if (result['type'] == 'post') {
@@ -311,64 +458,257 @@ class _ExploreScreenState extends State<ExploreScreen>
   }
 
   Widget _buildUserListItem(Map<String, dynamic> userData) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundImage:
-            userData['avatarUrl'] != null && userData['avatarUrl'].isNotEmpty
-                ? NetworkImage(userData['avatarUrl'])
-                : null,
-        child:
-            userData['avatarUrl'] == null || userData['avatarUrl'].isEmpty
-                ? const Icon(Icons.person)
-                : null,
-      ),
-      title: Text(userData['username'] ?? 'Không có tên'),
-      subtitle: Text(userData['bio'] ?? ''),
-      onTap: () => _navigateToProfile(),
+    final userId = userData['id'] ?? '';
+    final username = userData['username'] ?? 'Unknown';
+    final bio = userData['bio'] ?? '';
+    final avatarUrl = userData['avatarUrl'] ?? '';
+
+    return FutureBuilder<bool>(
+      future: _checkFollowStatus(userId),
+      builder: (context, followSnapshot) {
+        final isFollowing = followSnapshot.data ?? false;
+
+        return Card(
+          margin: EdgeInsets.symmetric(vertical: 4.h),
+          child: ListTile(
+            leading: CircleAvatar(
+              radius: 24.r,
+              backgroundImage:
+                  avatarUrl.isNotEmpty
+                      ? NetworkImage(avatarUrl)
+                      : const AssetImage('images/person.png') as ImageProvider,
+            ),
+            title: Text(
+              username,
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.sp),
+            ),
+            subtitle:
+                bio.isNotEmpty
+                    ? Text(
+                      bio,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14.sp,
+                      ),
+                    )
+                    : null,
+            trailing: SizedBox(
+              width: 80.w,
+              child: ElevatedButton(
+                onPressed: () => _toggleFollow(userId, isFollowing),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isFollowing ? Colors.grey[300] : Colors.blue,
+                  foregroundColor: isFollowing ? Colors.black : Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 8.w),
+                ),
+                child: Text(
+                  isFollowing ? 'Unfollow' : 'Follow',
+                  style: TextStyle(fontSize: 12.sp),
+                ),
+              ),
+            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder:
+                      (context) => OtherUserProfileScreen(
+                        userId: userId,
+                        username: username,
+                      ),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
   Widget _buildPostListItem(Map<String, dynamic> postData) {
-    return ListTile(
-      leading: Container(
-        width: 50.w,
-        height: 50.h,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(5.r),
-          image: DecorationImage(
-            image: NetworkImage(postData['imageUrl']),
-            fit: BoxFit.cover,
+    final imageUrls = List<String>.from(postData['imageUrls'] ?? []);
+    final firstImageUrl = imageUrls.isNotEmpty ? imageUrls[0] : null;
+    final isMultiImage = imageUrls.length > 1;
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) => PostScreen(
+                  username: postData['username'] ?? 'Unknown',
+                  caption: postData['caption'] ?? '',
+                  imageUrls: imageUrls,
+                  postTime:
+                      postData['postTime'] != null
+                          ? _formatTimestamp(postData['postTime'] as Timestamp)
+                          : 'Unknown time',
+                  avatarUrl: postData['avatarUrl'] ?? '',
+                  postId: postData['id'] ?? '',
+                  uid: postData['uid'] ?? '',
+                ),
           ),
+        );
+      },
+      child: Card(
+        margin: EdgeInsets.symmetric(vertical: 4.h),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 50.w,
+              height: 50.h,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child:
+                        firstImageUrl != null
+                            ? CachedNetworkImage(
+                              imageUrl: firstImageUrl,
+                              fit: BoxFit.cover,
+                              placeholder:
+                                  (context, url) => Center(
+                                    child: SizedBox(
+                                      width: 20.w,
+                                      height: 20.h,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.w,
+                                      ),
+                                    ),
+                                  ),
+                              errorWidget:
+                                  (context, url, error) =>
+                                      const Icon(Icons.image_not_supported),
+                            )
+                            : Container(
+                              color: Colors.grey[300],
+                              child: const Icon(Icons.image_not_supported),
+                            ),
+                  ),
+                  if (isMultiImage)
+                    const Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Icon(
+                        Icons.collections,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            SizedBox(width: 10.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Post from ${postData['username'] ?? 'Unknown'}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14.sp,
+                    ),
+                  ),
+                  Text(
+                    postData['caption'] ?? '',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
-      title: Text('Bài viết từ ${postData['username']}'),
-      subtitle: Text(
-        postData['caption'],
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-      onTap: () => _navigateToPost(postData),
     );
   }
 
   Widget _buildReelListItem(Map<String, dynamic> reelData) {
-    return ListTile(
-      leading: Container(
-        width: 50.w,
-        height: 50.h,
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(5.r),
+    final thumbnailUrl = reelData['thumbnailUrl'] ?? '';
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ReelsScreen(initialReelId: reelData['id']),
+          ),
+        );
+      },
+      child: Card(
+        margin: EdgeInsets.symmetric(vertical: 4.h),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 50.w,
+              height: 50.h,
+              child: Stack(
+                children: [
+                  thumbnailUrl.isNotEmpty
+                      ? CachedNetworkImage(
+                        imageUrl: thumbnailUrl,
+                        fit: BoxFit.cover,
+                        placeholder:
+                            (context, url) => Center(
+                              child: SizedBox(
+                                width: 20.w,
+                                height: 20.h,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.w,
+                                ),
+                              ),
+                            ),
+                        errorWidget:
+                            (context, url, error) => const Icon(Icons.error),
+                      )
+                      : Container(
+                        color: Colors.grey[300],
+                        child: Icon(
+                          Icons.videocam,
+                          size: 30,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                  const Positioned(
+                    bottom: 5,
+                    right: 5,
+                    child: Icon(
+                      Icons.play_circle_outline,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 10.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Reel from ${reelData['username'] ?? 'Unknown'}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14.sp,
+                    ),
+                  ),
+                  Text(
+                    reelData['caption'] ?? 'No description',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        child: const Center(child: Icon(Icons.play_arrow, color: Colors.white)),
       ),
-      title: Text('Reels từ ${reelData['username']}'),
-      subtitle: Text(
-        reelData['caption'] ?? 'Không có mô tả',
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-      onTap: () => _navigateToReel(reelData['id']),
     );
   }
 
@@ -382,19 +722,21 @@ class _ExploreScreenState extends State<ExploreScreen>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Khám phá',
+                  'Tìm kiếm',
                   style: TextStyle(
                     fontSize: 18.sp,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 TextButton.icon(
-                  icon: Icon(Icons.video_library),
-                  label: Text('Reels'),
+                  icon: const Icon(Icons.video_library),
+                  label: const Text('Reels'),
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => ReelsScreen()),
+                      MaterialPageRoute(
+                        builder: (context) => const ReelsScreen(),
+                      ),
                     );
                   },
                 ),
@@ -402,18 +744,20 @@ class _ExploreScreenState extends State<ExploreScreen>
             ),
           ),
         ),
-
-        // Featured Content Sections
         _buildFeaturedSection(
-          title: 'Bài viết đề xuất',
+          title: 'Bài viết nổi bật',
           stream:
               _firestore
                   .collection('posts')
                   .orderBy('postTime', descending: true)
                   .limit(10)
                   .snapshots(),
-          itemBuilder: (BuildContext context, DocumentSnapshot doc) {
+          itemBuilder: (context, doc) {
             final data = doc.data() as Map<String, dynamic>;
+            final imageUrls = List<String>.from(data['imageUrls'] ?? []);
+            final firstImageUrl = imageUrls.isNotEmpty ? imageUrls[0] : null;
+            final isMultiImage = imageUrls.length > 1;
+
             return GestureDetector(
               onTap: () {
                 Navigator.push(
@@ -421,38 +765,73 @@ class _ExploreScreenState extends State<ExploreScreen>
                   MaterialPageRoute(
                     builder:
                         (context) => PostScreen(
-                          username: data['username'],
-                          caption: data['caption'],
-                          imageUrl: data['imageUrl'],
-                          postTime: data['postTime'],
+                          username: data['username'] ?? 'Unknown',
+                          caption: data['caption'] ?? '',
+                          imageUrls: imageUrls,
+                          postTime:
+                              data['postTime'] != null
+                                  ? _formatTimestamp(
+                                    data['postTime'] as Timestamp,
+                                  )
+                                  : 'Unknown time',
                           avatarUrl: data['avatarUrl'] ?? '',
                           postId: doc.id,
+                          uid: data['uid'] ?? '',
                         ),
                   ),
                 );
               },
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(5.r),
-                  color: Colors.grey.shade300,
-                ),
-                child: _buildCachedImage(data['imageUrl']),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child:
+                        firstImageUrl != null
+                            ? CachedNetworkImage(
+                              imageUrl: firstImageUrl,
+                              fit: BoxFit.cover,
+                              placeholder:
+                                  (context, url) => Center(
+                                    child: SizedBox(
+                                      width: 20.w,
+                                      height: 20.h,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.w,
+                                      ),
+                                    ),
+                                  ),
+                              errorWidget:
+                                  (context, url, error) =>
+                                      const Icon(Icons.image_not_supported),
+                            )
+                            : Container(
+                              color: Colors.grey[300],
+                              child: const Icon(Icons.image_not_supported),
+                            ),
+                  ),
+                  if (isMultiImage)
+                    const Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Icon(
+                        Icons.collections,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                ],
               ),
             );
           },
         ),
-
-        // Posts Grid
         SliverToBoxAdapter(
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
             child: Text(
-              'Khám phá bài viết',
+              'Tìm kiếm bài viết...',
               style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
             ),
           ),
         ),
-
         StreamBuilder(
           stream: _firestore.collection('posts').snapshots(),
           builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
@@ -461,13 +840,16 @@ class _ExploreScreenState extends State<ExploreScreen>
                 child: Center(child: CircularProgressIndicator()),
               );
             }
-
             return SliverPadding(
               padding: EdgeInsets.symmetric(horizontal: 3.w),
               sliver: SliverGrid(
                 delegate: SliverChildBuilderDelegate((context, index) {
                   final doc = snapshot.data!.docs[index];
                   final data = doc.data() as Map<String, dynamic>;
+                  final imageUrls = List<String>.from(data['imageUrls'] ?? []);
+                  final firstImageUrl =
+                      imageUrls.isNotEmpty ? imageUrls[0] : null;
+                  final isMultiImage = imageUrls.length > 1;
 
                   return GestureDetector(
                     onTap: () {
@@ -476,19 +858,63 @@ class _ExploreScreenState extends State<ExploreScreen>
                         MaterialPageRoute(
                           builder:
                               (context) => PostScreen(
-                                username: data['username'],
-                                caption: data['caption'],
-                                imageUrl: data['imageUrl'],
-                                postTime: data['postTime'],
+                                username: data['username'] ?? 'Unknown',
+                                caption: data['caption'] ?? '',
+                                imageUrls: imageUrls,
+                                postTime:
+                                    data['postTime'] != null
+                                        ? _formatTimestamp(
+                                          data['postTime'] as Timestamp,
+                                        )
+                                        : 'Unknown time',
                                 avatarUrl: data['avatarUrl'] ?? '',
                                 postId: doc.id,
+                                uid: data['uid'] ?? '',
                               ),
                         ),
                       );
                     },
-                    child: Container(
-                      decoration: BoxDecoration(color: Colors.grey.shade300),
-                      child: _buildCachedImage(data['imageUrl']),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child:
+                              firstImageUrl != null
+                                  ? CachedNetworkImage(
+                                    imageUrl: firstImageUrl,
+                                    fit: BoxFit.cover,
+                                    placeholder:
+                                        (context, url) => Center(
+                                          child: SizedBox(
+                                            width: 20.w,
+                                            height: 20.h,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2.w,
+                                            ),
+                                          ),
+                                        ),
+                                    errorWidget:
+                                        (context, url, error) => const Icon(
+                                          Icons.image_not_supported,
+                                        ),
+                                  )
+                                  : Container(
+                                    color: Colors.grey[300],
+                                    child: const Icon(
+                                      Icons.image_not_supported,
+                                    ),
+                                  ),
+                        ),
+                        if (isMultiImage)
+                          const Positioned(
+                            right: 4,
+                            top: 4,
+                            child: Icon(
+                              Icons.collections,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                      ],
                     ),
                   );
                 }, childCount: snapshot.data!.docs.length),
@@ -496,7 +922,7 @@ class _ExploreScreenState extends State<ExploreScreen>
                   crossAxisCount: 3,
                   mainAxisSpacing: 3,
                   crossAxisSpacing: 3,
-                  pattern: const [
+                  pattern: [
                     QuiltedGridTile(2, 1),
                     QuiltedGridTile(2, 2),
                     QuiltedGridTile(1, 1),
@@ -537,7 +963,6 @@ class _ExploreScreenState extends State<ExploreScreen>
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
-
                 return ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: EdgeInsets.symmetric(horizontal: 5.w),
@@ -561,45 +986,42 @@ class _ExploreScreenState extends State<ExploreScreen>
     );
   }
 
-  Widget _buildCachedImage(String imageUrl) {
-    return CachedNetworkImage(
-      imageUrl: imageUrl,
-      fit: BoxFit.cover,
-      placeholder:
-          (context, url) => Center(
-            child: SizedBox(
-              width: 20.w,
-              height: 20.h,
-              child: CircularProgressIndicator(strokeWidth: 2.w),
-            ),
+  Widget _buildCachedImage(List<String> imageUrls) {
+    final firstImageUrl = imageUrls.isNotEmpty ? imageUrls[0] : null;
+    final isMultiImage = imageUrls.length > 1;
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child:
+              firstImageUrl != null
+                  ? CachedNetworkImage(
+                    imageUrl: firstImageUrl,
+                    fit: BoxFit.cover,
+                    placeholder:
+                        (context, url) => Center(
+                          child: SizedBox(
+                            width: 20.w,
+                            height: 20.h,
+                            child: CircularProgressIndicator(strokeWidth: 2.w),
+                          ),
+                        ),
+                    errorWidget:
+                        (context, url, error) =>
+                            const Icon(Icons.image_not_supported),
+                  )
+                  : Container(
+                    color: Colors.grey[300],
+                    child: const Icon(Icons.image_not_supported),
+                  ),
+        ),
+        if (isMultiImage)
+          const Positioned(
+            right: 4,
+            top: 4,
+            child: Icon(Icons.collections, color: Colors.white, size: 20),
           ),
-      errorWidget:
-          (context, url, error) => Center(child: Icon(Icons.error, size: 20.w)),
-    );
-  }
-}
-
-// Missing CachedImage Widget (implementation)
-class CachedImage extends StatelessWidget {
-  final String imageUrl;
-
-  const CachedImage(this.imageUrl, {Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return CachedNetworkImage(
-      imageUrl: imageUrl,
-      fit: BoxFit.cover,
-      placeholder:
-          (context, url) => Center(
-            child: SizedBox(
-              width: 20.w,
-              height: 20.h,
-              child: CircularProgressIndicator(strokeWidth: 2.w),
-            ),
-          ),
-      errorWidget:
-          (context, url, error) => Center(child: Icon(Icons.error, size: 20.w)),
+      ],
     );
   }
 }

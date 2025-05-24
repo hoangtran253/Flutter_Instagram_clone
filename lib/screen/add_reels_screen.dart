@@ -192,6 +192,7 @@ class _AddReelScreenState extends State<AddReelScreen> {
 
   void _uploadReel() async {
     if (_videoFile == null || _captionController.text.trim().isEmpty) {
+      print("Video URL rỗng sau khi upload");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Vui lòng chọn video và nhập caption')),
       );
@@ -213,16 +214,18 @@ class _AddReelScreenState extends State<AddReelScreen> {
       final reelData = {
         'caption': _captionController.text.trim(),
         'videoUrl': videoUrl,
-        'thumbnailUrl': thumbnailUrl, // <-- thêm thumbnail vào đây
+        'thumbnailUrl': thumbnailUrl,
         'postTime': FieldValue.serverTimestamp(),
         'uid': currentUser!.uid,
         'username': _username,
         'avatarUrl': _avatarUrl,
-        'likes': [],
-        'comments': 0,
+        'likes': [], // Initialize empty likes array
+        'comments': [], // Initialize empty comments array
+        'commentsCount': 0,
+        'likesCount': 0,
       };
 
-      // Lưu vào Firestore
+      // Lưu vào Firestore collection 'reels' thay vì 'posts'
       await FirebaseFirestore.instance.collection('reels').add(reelData);
 
       // Gửi dữ liệu về ReelsScreen nếu cần

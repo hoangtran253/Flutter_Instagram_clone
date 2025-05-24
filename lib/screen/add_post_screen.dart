@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 import 'dart:convert';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -20,7 +19,7 @@ class AddPostScreen extends StatefulWidget {
 }
 
 class _AddPostScreenState extends State<AddPostScreen> {
-  Uint8List? _imageData;
+  List<Uint8List> _imageDataList = []; // Changed to List<Uint8List>
   TextEditingController _captionController = TextEditingController();
 
   final String cloudName = 'dv8bbvd5q';
@@ -30,24 +29,23 @@ class _AddPostScreenState extends State<AddPostScreen> {
   String? _username;
   bool _isLoading = false;
   bool _isImageSelected = false;
+  String? _avatarUrl;
 
   @override
   void initState() {
     super.initState();
     _fetchUserData();
 
-    // If image was captured from camera, use it
+    // If image was captured from camera, add it to the list
     if (widget.capturedImageData != null) {
       setState(() {
-        _imageData = widget.capturedImageData;
+        _imageDataList = [widget.capturedImageData!];
         _isImageSelected = true;
       });
     }
   }
 
-  // Lấy thông tin người dùng từ Firestore
-  String? _avatarUrl;
-
+  // Fetch user data from Firestore
   Future<void> _fetchUserData() async {
     final uid = _auth.currentUser!.uid;
     DocumentSnapshot userSnap =
@@ -57,25 +55,29 @@ class _AddPostScreenState extends State<AddPostScreen> {
 
     setState(() {
       _username = userData['username'];
-      _avatarUrl = userData['avatarUrl']; // Lấy avatar
+      _avatarUrl = userData['avatarUrl'];
     });
   }
 
-  // Chọn ảnh từ thiết bị
+  // Pick multiple images from gallery
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
+    final pickedFiles = await picker.pickMultiImage(); // Use pickMultiImage
 
-    if (picked != null) {
-      final bytes = await picked.readAsBytes();
+    if (pickedFiles.isNotEmpty) {
+      List<Uint8List> newImages = [];
+      for (var file in pickedFiles) {
+        final bytes = await file.readAsBytes();
+        newImages.add(bytes);
+      }
       setState(() {
-        _imageData = bytes;
+        _imageDataList.addAll(newImages); // Append new images
         _isImageSelected = true;
       });
     }
   }
 
-  // New method to take photo directly
+  // Take photo directly
   Future<void> _takePicture() async {
     final cameras = await availableCameras();
     if (cameras.isEmpty) {
@@ -92,7 +94,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
               camera: cameras.first,
               onImageCaptured: (imageData) {
                 setState(() {
-                  _imageData = imageData;
+                  _imageDataList.add(imageData); // Add captured image to list
                   _isImageSelected = true;
                 });
               },
@@ -101,61 +103,66 @@ class _AddPostScreenState extends State<AddPostScreen> {
     );
   }
 
-  // Tải ảnh lên Cloudinary
-  Future<String?> uploadToCloudinary(Uint8List imageBytes) async {
+  // Upload multiple images to Cloudinary
+  Future<List<String>> uploadToCloudinary(
+    List<Uint8List> imageBytesList,
+  ) async {
+    List<String> imageUrls = [];
     final uri = Uri.parse(
       'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
     );
 
-    final request = http.MultipartRequest('POST', uri);
-    request.fields['upload_preset'] = uploadPreset;
-    request.files.add(
-      http.MultipartFile.fromBytes('file', imageBytes, filename: 'post.jpg'),
-    );
+    for (int i = 0; i < imageBytesList.length; i++) {
+      final request = http.MultipartRequest('POST', uri);
+      request.fields['upload_preset'] = uploadPreset;
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          imageBytesList[i],
+          filename: 'post_$i.jpg',
+        ),
+      );
 
-    try {
-      final response = await request.send();
-      if (response.statusCode == 200) {
-        final responseData = await response.stream.bytesToString();
-        final jsonMap = json.decode(responseData);
-        return jsonMap['secure_url'];
-      } else {
-        print('Upload failed: ${response.statusCode}');
-        return null;
+      try {
+        final response = await request.send();
+        if (response.statusCode == 200) {
+          final responseData = await response.stream.bytesToString();
+          final jsonMap = json.decode(responseData);
+          imageUrls.add(jsonMap['secure_url']);
+        } else {
+          print('Upload failed for image $i: ${response.statusCode}');
+        }
+      } catch (e) {
+        print('Upload error for image $i: $e');
       }
-    } catch (e) {
-      print('Upload error: $e');
-      return null;
     }
+    return imageUrls;
   }
 
-  // Xử lý khi người dùng đăng bài
-  // In _AddPostScreenState class
+  // Handle post submission
   Future<void> _handlePost() async {
-    if (_imageData == null || _username == null) return;
+    if (_imageDataList.isEmpty || _username == null) return;
     setState(() {
       _isLoading = true;
     });
 
-    final bytes = _imageData!;
-    String? imageUrl = await uploadToCloudinary(bytes);
+    List<String> imageUrls = await uploadToCloudinary(_imageDataList);
 
-    if (imageUrl != null) {
-      // Create a new post document with a generated ID
+    if (imageUrls.isNotEmpty) {
       DocumentReference postRef =
           FirebaseFirestore.instance.collection('posts').doc();
       String postId = postRef.id;
 
       final post = {
-        'postId': postId, // Add postId to the post document
+        'postId': postId,
         'uid': _auth.currentUser!.uid,
         'username': _username,
         'caption': _captionController.text,
-        'imageUrl': imageUrl,
+        'imageUrls': imageUrls, // Store list of image URLs
         'avatarUrl': _avatarUrl,
         'postTime': FieldValue.serverTimestamp(),
-        'likes': [], // Array to store user IDs who liked the post
-        'comments': [], // Array to store comment documents
+        'likes': [],
+        'comments': [],
       };
 
       await postRef.set(post);
@@ -165,13 +172,12 @@ class _AddPostScreenState extends State<AddPostScreen> {
       ).showSnackBar(const SnackBar(content: Text("Đăng bài thành công!")));
 
       setState(() {
-        _imageData = null;
+        _imageDataList.clear(); // Clear the image list
         _isImageSelected = false;
         _captionController.clear();
         _isLoading = false;
       });
 
-      // Navigate back to the feed screen
       Navigator.of(context).popUntil((route) => route.isFirst);
     } else {
       ScaffoldMessenger.of(
@@ -218,7 +224,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Thông tin người dùng
+              // User info
               if (_username != null)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -255,50 +261,83 @@ class _AddPostScreenState extends State<AddPostScreen> {
               ),
               SizedBox(height: 16.h),
 
-              // Hiển thị ảnh
-              GestureDetector(
-                onTap: _pickImage,
-                child: Container(
-                  width: double.infinity,
-                  height: 360.h,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12.r),
-                    border: Border.all(color: Colors.grey.shade300, width: 1),
-                  ),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child:
-                        _imageData != null
-                            ? ClipRRect(
-                              borderRadius: BorderRadius.circular(12.r),
-                              child: Image.memory(
-                                _imageData!,
-                                key: ValueKey(_imageData),
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                              ),
-                            )
-                            : Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.add_photo_alternate_outlined,
-                                  size: 64.sp,
-                                  color: Colors.grey.shade400,
-                                ),
-                                SizedBox(height: 12.h),
-                                Text(
-                                  'Chọn ảnh từ thư viện',
-                                  style: TextStyle(
-                                    fontSize: 16.sp,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                  ),
+              // Display multiple images
+              Container(
+                width: double.infinity,
+                height: 360.h,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12.r),
+                  border: Border.all(color: Colors.grey.shade300, width: 1),
                 ),
+                child:
+                    _imageDataList.isNotEmpty
+                        ? ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _imageDataList.length,
+                          itemBuilder: (context, index) {
+                            return Padding(
+                              padding: EdgeInsets.all(8.r),
+                              child: Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(12.r),
+                                    child: Image.memory(
+                                      _imageDataList[index],
+                                      width: 300.w,
+                                      height: 360.h,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 8.h,
+                                    right: 8.w,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _imageDataList.removeAt(index);
+                                          if (_imageDataList.isEmpty) {
+                                            _isImageSelected = false;
+                                          }
+                                        });
+                                      },
+                                      child: CircleAvatar(
+                                        radius: 16.r,
+                                        backgroundColor: Colors.black54,
+                                        child: Icon(
+                                          Icons.close,
+                                          color: Colors.white,
+                                          size: 20.sp,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        )
+                        : GestureDetector(
+                          onTap: _pickImage,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.add_photo_alternate_outlined,
+                                size: 64.sp,
+                                color: Colors.grey.shade400,
+                              ),
+                              SizedBox(height: 12.h),
+                              Text(
+                                'Chọn ảnh từ thư viện',
+                                style: TextStyle(
+                                  fontSize: 16.sp,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
               ),
               SizedBox(height: 24.h),
 
@@ -380,7 +419,7 @@ class _AddPostScreenState extends State<AddPostScreen> {
   }
 }
 
-// CameraPreviewScreen for taking photos directly in the app
+// CameraPreviewScreen remains unchanged unless you want to allow multiple captures
 class CameraPreviewScreen extends StatefulWidget {
   final CameraDescription camera;
   final Function(Uint8List) onImageCaptured;
@@ -480,7 +519,6 @@ class _CameraPreviewScreenState extends State<CameraPreviewScreen>
             return Stack(
               children: [
                 Positioned.fill(child: CameraPreview(_controller)),
-                // Top controls
                 Positioned(
                   top: 40.h,
                   left: 16.w,
@@ -507,7 +545,6 @@ class _CameraPreviewScreenState extends State<CameraPreviewScreen>
                     ],
                   ),
                 ),
-                // Bottom controls
                 Positioned(
                   bottom: 32.h,
                   left: 0,
