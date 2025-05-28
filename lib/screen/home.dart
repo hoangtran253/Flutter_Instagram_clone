@@ -4,6 +4,7 @@ import 'package:flutter_instagram_clone/screen/chatlist_screen.dart';
 import 'package:flutter_instagram_clone/widgets/post_widget.dart';
 import 'package:flutter_instagram_clone/screen/notifications_screen.dart';
 import 'package:flutter_instagram_clone/widgets/notifications.dart';
+import 'package:flutter_instagram_clone/widgets/story_bar.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -55,11 +56,11 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(55.h),
         child: AppBar(
-          elevation: 0,
+          elevation: 0.5,
           backgroundColor: Colors.white,
           centerTitle: true,
           title: Container(
-            margin: EdgeInsets.only(top: 130, bottom: 130, right: 100),
+            margin: EdgeInsets.only(top: 140, bottom: 140, right: 115),
             child: Image.asset('images/instagram.png', fit: BoxFit.contain),
           ),
 
@@ -116,7 +117,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             IconButton(
-              icon: Image.asset('images/message.png', fit: BoxFit.cover),
+              icon: Image.asset(
+                'images/message.png',
+                fit: BoxFit.cover,
+                height: 28.h,
+              ),
               onPressed: () {
                 Navigator.push(
                   context,
@@ -142,62 +147,76 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.photo_library_outlined,
-                    size: 64.sp,
-                    color: Colors.grey.shade400,
-                  ),
-                  SizedBox(height: 16.h),
-                  Text(
-                    "Chưa có bài viết nào",
-                    style: TextStyle(
-                      fontSize: 16.sp,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                  SizedBox(height: 8.h),
-                  Text(
-                    "Hãy theo dõi ai đó để xem bài viết của họ",
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final posts = snapshot.data!.docs;
+          final posts = snapshot.data?.docs ?? [];
 
           return RefreshIndicator(
             onRefresh: () async {
-              // Refresh will be handled automatically by StreamBuilder
-              await Future.delayed(Duration(milliseconds: 500));
+              await Future.delayed(const Duration(milliseconds: 500));
             },
-            child: ListView.separated(
+            child: ListView.builder(
               padding: EdgeInsets.symmetric(vertical: 10.h),
-              itemCount: posts.length,
-              separatorBuilder: (_, __) => SizedBox(height: 12.h),
+              itemCount: posts.isEmpty ? 2 : posts.length + 1,
               itemBuilder: (context, index) {
-                final post = posts[index].data() as Map<String, dynamic>;
-                final Timestamp? timestamp = post['postTime'];
-                final doc = snapshot.data!.docs[index];
-                final data = doc.data() as Map<String, dynamic>;
+                if (index == 0) {
+                  return Container(
+                    height: 140.h,
+                    child: StoryBar(
+                      onStoryAdded: () {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Đã thêm tin mới')),
+                        );
+                      },
+                    ),
+                  );
+                }
 
-                return PostWidget(
-                  uid: post['uid'] ?? '',
-                  postId: post['postId'] ?? '',
-                  username: post['username'] ?? '',
-                  caption: post['caption'] ?? '',
-                  imageUrls: List<String>.from(data['imageUrls'] ?? []),
-                  avatarUrl: post['avatarUrl'] ?? '',
-                  postTime: _getTimeAgo(timestamp),
+                if (posts.isEmpty) {
+                  return Center(
+                    child: Column(
+                      children: [
+                        SizedBox(height: 30.h),
+                        Icon(
+                          Icons.photo_library_outlined,
+                          size: 64.sp,
+                          color: Colors.grey.shade400,
+                        ),
+                        SizedBox(height: 16.h),
+                        Text(
+                          "Chưa có bài viết nào",
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        SizedBox(height: 8.h),
+                        Text(
+                          "Hãy theo dõi ai đó để xem bài viết của họ",
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                final post = posts[index - 1].data() as Map<String, dynamic>;
+                final data = posts[index - 1].data() as Map<String, dynamic>;
+                final timestamp = post['postTime'];
+
+                return Padding(
+                  padding: EdgeInsets.only(bottom: 12.h),
+                  child: PostWidget(
+                    uid: post['uid'] ?? '',
+                    postId: post['postId'] ?? '',
+                    username: post['username'] ?? '',
+                    caption: post['caption'] ?? '',
+                    imageUrls: List<String>.from(data['imageUrls'] ?? []),
+                    avatarUrl: post['avatarUrl'] ?? '',
+                    postTime: _getTimeAgo(timestamp),
+                  ),
                 );
               },
             ),

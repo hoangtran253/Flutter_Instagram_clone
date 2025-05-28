@@ -350,7 +350,6 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(height: 8.h),
                 SizedBox(
                   height: 60.h,
                   child: ListView(
@@ -566,7 +565,11 @@ class _ChatScreenState extends State<ChatScreen> {
                       final isDeleted = message['deleted'] == true;
                       final isEdited = message['edited'] == true;
 
-                      // Xử lý reactions: có thể là List hoặc Map
+                      // Lấy thông tin story reply nếu có
+                      final storyReply =
+                          message['storyReply'] as Map<String, dynamic>?;
+
+                      // Xử lý reactions (giữ nguyên code cũ)...
                       List<Map<String, String>> reactions;
                       if (message['reactions'] is List) {
                         reactions =
@@ -589,11 +592,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       } else {
                         reactions = [];
                       }
-
-                      final userReaction = reactions.firstWhere(
-                        (r) => r['userId'] == _auth.currentUser?.uid,
-                        orElse: () => {'userId': '', 'emoji': ''},
-                      );
 
                       return _buildMessageBubble(
                         messageDoc.id,
@@ -619,6 +617,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                           ),
                         ),
+                        storyReply, // Truyền story reply data
                       );
                     },
                   );
@@ -678,6 +677,7 @@ class _ChatScreenState extends State<ChatScreen> {
     bool isEdited,
     VoidCallback onMorePressed,
     VoidCallback onReactionPressed,
+    Map<String, dynamic>? storyReply, // Thêm parameter này
   ) {
     return Column(
       crossAxisAlignment:
@@ -688,8 +688,7 @@ class _ChatScreenState extends State<ChatScreen> {
               isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (!isCurrentUser)
-              SizedBox(width: 32.w), // Space for avatar or alignment
+            if (!isCurrentUser) SizedBox(width: 32.w),
             Flexible(
               child: Container(
                 margin: EdgeInsets.symmetric(vertical: 4.h, horizontal: 8.w),
@@ -702,6 +701,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Hiển thị story reply nếu có
+                    if (storyReply != null) ...[
+                      _buildStoryReplyPreview(storyReply, isCurrentUser),
+                      SizedBox(height: 8.h),
+                    ],
                     Text(
                       message,
                       style: TextStyle(
@@ -805,6 +809,113 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildStoryReplyPreview(
+    Map<String, dynamic> storyReply,
+    bool isCurrentUser,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(8.w),
+      decoration: BoxDecoration(
+        color: isCurrentUser ? Colors.white.withOpacity(0.2) : Colors.grey[200],
+        borderRadius: BorderRadius.circular(8.r),
+        border: Border.all(
+          color:
+              isCurrentUser ? Colors.white.withOpacity(0.3) : Colors.grey[300]!,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header với tên người đăng story
+          Row(
+            children: [
+              Icon(
+                Icons.reply,
+                size: 14.sp,
+                color: isCurrentUser ? Colors.white70 : Colors.grey[600],
+              ),
+              SizedBox(width: 4.w),
+              Text(
+                'Reply to ${storyReply['storyOwner']}\'s story',
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  color: isCurrentUser ? Colors.white70 : Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          // Preview của story
+          Row(
+            children: [
+              Container(
+                width: 40.w,
+                height: 60.h,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8.r),
+                  color: Colors.grey[400],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8.r),
+                  child:
+                      storyReply['storyType'] == 'video'
+                          ? Stack(
+                            children: [
+                              Image.network(
+                                storyReply['storyUrl'] ?? '',
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                errorBuilder:
+                                    (context, error, stackTrace) => Icon(
+                                      Icons.error,
+                                      color: Colors.white,
+                                      size: 20.sp,
+                                    ),
+                              ),
+                              Center(
+                                child: Icon(
+                                  Icons.play_circle_outline,
+                                  color: Colors.white,
+                                  size: 20.sp,
+                                ),
+                              ),
+                            ],
+                          )
+                          : Image.network(
+                            storyReply['storyUrl'] ?? '',
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            errorBuilder:
+                                (context, error, stackTrace) => Icon(
+                                  Icons.error,
+                                  color: Colors.white,
+                                  size: 20.sp,
+                                ),
+                          ),
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Text(
+                  storyReply['storyType'] == 'video'
+                      ? 'Video story'
+                      : 'Photo story',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: isCurrentUser ? Colors.white70 : Colors.grey[600],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

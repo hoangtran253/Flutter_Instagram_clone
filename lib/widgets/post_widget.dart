@@ -197,6 +197,61 @@ class _PostWidgetState extends State<PostWidget>
     );
   }
 
+  void _onMorePressed() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.grey[900],
+      builder:
+          (context) => Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.report, color: Colors.white),
+                  title: const Text(
+                    'Báo cáo',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Đã báo cáo bài viết')),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.block, color: Colors.white),
+                  title: const Text(
+                    'Chặn người dùng',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Đã chặn người dùng')),
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.copy, color: Colors.white),
+                  title: const Text(
+                    'Sao chép liên kết',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Đã sao chép liên kết')),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+    );
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -252,7 +307,10 @@ class _PostWidgetState extends State<PostWidget>
                     ),
                   ),
                 ),
-                Icon(Icons.more_horiz),
+                IconButton(
+                  icon: const Icon(Icons.more_vert, color: Colors.white),
+                  onPressed: _onMorePressed,
+                ),
               ],
             ),
           ),

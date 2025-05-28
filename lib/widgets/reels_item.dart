@@ -286,7 +286,7 @@ class _ReelItemState extends State<ReelItem>
                   onTap: () {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Đã báo cáo bài viết')),
+                      const SnackBar(content: Text('Đã báo cáo video')),
                     );
                   },
                 ),
