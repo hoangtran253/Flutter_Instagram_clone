@@ -9,7 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 class ReelItem extends StatefulWidget {
   final Map<String, dynamic> reelData;
   final bool currentlyPlaying;
-  final VoidCallback? onDataChanged; // Callback to refresh parent data
+  final VoidCallback? onDataChanged;
 
   const ReelItem({
     Key? key,
@@ -30,6 +30,7 @@ class _ReelItemState extends State<ReelItem>
   bool _isLiked = false;
   int _likesCount = 0;
   int _commentsCount = 0;
+  int _sharesCount = 0; // Added share count
   bool _isLoadingLike = false;
 
   final ReelLikeService _likeService = ReelLikeService();
@@ -53,6 +54,7 @@ class _ReelItemState extends State<ReelItem>
     _initVideo();
     _loadLikeStatus();
     _loadCommentsCount();
+    _loadSharesCount(); // Initialize share count
     _likeAnimationController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         _likeAnimationController.reverse();
@@ -73,6 +75,67 @@ class _ReelItemState extends State<ReelItem>
     if (widget.currentlyPlaying) {
       _controller!.play();
       setState(() => _isPlaying = true);
+    }
+  }
+
+  Future<void> _saveReel() async {
+    final reelId = widget.reelData['reelId'];
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (reelId == null || currentUser == null) return;
+
+    try {
+      final savedDoc =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(currentUser.uid)
+              .collection('savedReels')
+              .doc(reelId)
+              .get();
+
+      if (savedDoc.exists) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('savedReels')
+            .doc(reelId)
+            .delete();
+
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Đã bỏ lưu video')));
+        }
+      } else {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('savedReels')
+            .doc(reelId)
+            .set({
+              'reelId': reelId,
+              'videoUrl': widget.reelData['videoUrl'],
+              'thumbnailUrl': widget.reelData['thumbnailUrl'],
+              'caption': widget.reelData['caption'],
+              'username': widget.reelData['username'],
+              'avatarUrl': widget.reelData['avatarUrl'],
+              'uid': widget.reelData['uid'],
+              'postTime': widget.reelData['postTime'],
+              'savedAt': FieldValue.serverTimestamp(),
+            });
+
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Đã lưu video')));
+        }
+      }
+    } catch (e) {
+      print('Error saving reel: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Lỗi khi lưu video: $e')));
+      }
     }
   }
 
@@ -112,6 +175,27 @@ class _ReelItemState extends State<ReelItem>
     }
   }
 
+  Future<void> _loadSharesCount() async {
+    final reelId = widget.reelData['reelId'];
+    if (reelId == null) return;
+
+    try {
+      final sharesSnapshot =
+          await FirebaseFirestore.instance
+              .collection('reels')
+              .doc(reelId)
+              .collection('shares')
+              .get();
+      if (mounted) {
+        setState(() {
+          _sharesCount = sharesSnapshot.docs.length;
+        });
+      }
+    } catch (e) {
+      print('Error loading shares count: $e');
+    }
+  }
+
   @override
   void didUpdateWidget(covariant ReelItem oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -123,10 +207,10 @@ class _ReelItemState extends State<ReelItem>
       setState(() => _isPlaying = false);
     }
 
-    // Reload data if reel data changed
     if (oldWidget.reelData['reelId'] != widget.reelData['reelId']) {
       _loadLikeStatus();
       _loadCommentsCount();
+      _loadSharesCount();
     }
   }
 
@@ -164,12 +248,10 @@ class _ReelItemState extends State<ReelItem>
           _likeAnimationController.forward();
         }
 
-        // Notify parent to refresh data
         widget.onDataChanged?.call();
       }
     } catch (e) {
       print('Error toggling like: $e');
-      // Show error message to user
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -194,77 +276,92 @@ class _ReelItemState extends State<ReelItem>
     );
   }
 
-  Widget _buildCommentsBottomSheet(String reelId) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.3,
-      maxChildSize: 0.9,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
-            ),
-          ),
-          child: Column(
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.only(top: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[600],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              // Header
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Bình luận',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(color: Colors.grey, height: 1),
-              // Comments list
-              Expanded(
-                child: _CommentsWidget(
-                  reelId: reelId,
-                  scrollController: scrollController,
-                  onCommentsChanged: () {
-                    _loadCommentsCount();
-                    widget.onDataChanged?.call();
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+  Future<void> _onSharePressed() async {
+    final reelId = widget.reelData['reelId'];
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (reelId == null || currentUser == null) return;
 
-  void _onSharePressed() {
-    // Implement share functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Tính năng chia sẻ đang được phát triển')),
-    );
+    try {
+      // Check if already shared
+      final sharedDoc =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(currentUser.uid)
+              .collection('sharedReels')
+              .doc(reelId)
+              .get();
+
+      if (sharedDoc.exists) {
+        // Remove share
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('sharedReels')
+            .doc(reelId)
+            .delete();
+        await FirebaseFirestore.instance
+            .collection('reels')
+            .doc(reelId)
+            .collection('shares')
+            .doc(currentUser.uid)
+            .delete();
+
+        if (mounted) {
+          setState(() {
+            _sharesCount = _sharesCount > 0 ? _sharesCount - 1 : 0;
+          });
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Đã bỏ chia sẻ video')));
+        }
+      } else {
+        // Add share
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .collection('sharedReels')
+            .doc(reelId)
+            .set({
+              'reelId': reelId,
+              'videoUrl': widget.reelData['videoUrl'],
+              'thumbnailUrl': widget.reelData['thumbnailUrl'],
+              'caption': widget.reelData['caption'],
+              'username': widget.reelData['username'],
+              'avatarUrl': widget.reelData['avatarUrl'],
+              'uid': widget.reelData['uid'],
+              'postTime': widget.reelData['postTime'],
+              'sharedAt': FieldValue.serverTimestamp(),
+            });
+
+        await FirebaseFirestore.instance
+            .collection('reels')
+            .doc(reelId)
+            .collection('shares')
+            .doc(currentUser.uid)
+            .set({
+              'uid': currentUser.uid,
+              'sharedAt': FieldValue.serverTimestamp(),
+            });
+
+        if (mounted) {
+          setState(() {
+            _sharesCount++;
+          });
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Đã chia sẻ video')));
+        }
+      }
+
+      widget.onDataChanged?.call();
+    } catch (e) {
+      print('Error sharing reel: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Lỗi khi chia sẻ video: $e')));
+      }
+    }
   }
 
   void _onMorePressed() {
@@ -277,6 +374,20 @@ class _ReelItemState extends State<ReelItem>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                ListTile(
+                  leading: const Icon(
+                    Icons.bookmark_add_outlined,
+                    color: Colors.white,
+                  ),
+                  title: const Text(
+                    'Lưu video',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _saveReel();
+                  },
+                ),
                 ListTile(
                   leading: const Icon(Icons.report, color: Colors.white),
                   title: const Text(
@@ -322,6 +433,69 @@ class _ReelItemState extends State<ReelItem>
     );
   }
 
+  Widget _buildCommentsBottomSheet(String reelId) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.3,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Bình luận',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(color: Colors.grey, height: 1),
+              Expanded(
+                child: _CommentsWidget(
+                  reelId: reelId,
+                  scrollController: scrollController,
+                  onCommentsChanged: () {
+                    _loadCommentsCount();
+                    widget.onDataChanged?.call();
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     _controller?.dispose();
@@ -344,8 +518,6 @@ class _ReelItemState extends State<ReelItem>
               ),
             )
             : const Center(child: CircularProgressIndicator()),
-
-        // Gradient overlay
         Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -355,14 +527,10 @@ class _ReelItemState extends State<ReelItem>
             ),
           ),
         ),
-
-        // UI Elements
         Padding(
           padding: const EdgeInsets.all(16),
           child: Stack(children: [_buildLeftInfo(), _buildRightActions()]),
         ),
-
-        // Play icon
         if (!_isPlaying)
           const Center(
             child: Icon(Icons.play_arrow, color: Colors.white, size: 64),
@@ -439,7 +607,6 @@ class _ReelItemState extends State<ReelItem>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Like button
           AnimatedBuilder(
             animation: _likeAnimationController,
             builder:
@@ -480,8 +647,6 @@ class _ReelItemState extends State<ReelItem>
                 ),
           ),
           const SizedBox(height: 8),
-
-          // Comment button
           Column(
             children: [
               IconButton(
@@ -500,19 +665,24 @@ class _ReelItemState extends State<ReelItem>
             ],
           ),
           const SizedBox(height: 8),
-
-          // Share button
-          IconButton(
-            icon: Image.asset(
-              'images/sendoutline.png',
-              color: Colors.white,
-              height: 26,
-            ),
-            onPressed: _onSharePressed,
+          Column(
+            children: [
+              IconButton(
+                icon: Image.asset(
+                  'images/sendoutline.png',
+                  color: Colors.white,
+                  height: 26,
+                ),
+                onPressed: _onSharePressed,
+              ),
+              if (_sharesCount > 0)
+                Text(
+                  _formatCount(_sharesCount),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
-
-          // More button
           IconButton(
             icon: const Icon(Icons.more_vert, color: Colors.white, size: 26),
             onPressed: _onMorePressed,

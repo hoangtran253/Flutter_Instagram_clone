@@ -2,12 +2,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_instagram_clone/screen/chatlist_screen.dart';
 import 'package:flutter_instagram_clone/screen/edit_profile_screen.dart';
 import 'package:flutter_instagram_clone/screen/authprofile_screen.dart';
-import 'package:flutter_instagram_clone/screen/explor_screen.dart';
 import 'package:flutter_instagram_clone/screen/post_screen.dart';
 import 'package:flutter_instagram_clone/screen/reel_detail.dart';
+import 'package:flutter_instagram_clone/screen/savecontent_screen.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -43,7 +42,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       setState(() => isLoading = true);
 
-      // Batch fetch user data, posts, followers, and following
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
       final postSnapshot =
           await _firestore
@@ -118,11 +116,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         ListTile(
-                          leading: const Icon(Icons.settings),
-                          title: const Text('Settings'),
+                          leading: const Icon(Icons.bookmark_border),
+                          title: const Text('Nội dung đã lưu'),
                           onTap: () {
                             Navigator.pop(context);
-                            // Navigate to settings page (implement as needed)
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => SavedContentScreen(),
+                              ),
+                            );
                           },
                         ),
                         ListTile(
@@ -245,7 +248,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           tabs: [
                             Tab(icon: Icon(Icons.grid_on)),
                             Tab(icon: Icon(Icons.video_collection_outlined)),
-                            Tab(icon: Icon(Icons.bookmark_border)),
+                            Tab(icon: Icon(Icons.share)),
                           ],
                         ),
                         Expanded(
@@ -253,7 +256,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             children: [
                               _buildUserPosts(user.uid),
                               _buildUserReels(user.uid),
-                              const Center(child: Text("Saved Posts")),
+                              _buildSharedContent(),
                             ],
                           ),
                         ),
@@ -423,6 +426,233 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildSharedContent() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _getCombinedSharedContent(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.share, size: 80, color: Colors.grey),
+                SizedBox(height: 16),
+                Text(
+                  'Chưa có nội dung đã chia sẻ',
+                  style: TextStyle(fontSize: 18, color: Colors.grey),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return GridView.builder(
+          padding: EdgeInsets.all(2.w),
+          itemCount: snapshot.data!.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisSpacing: 2,
+            crossAxisSpacing: 2,
+          ),
+          itemBuilder: (context, index) {
+            final item = snapshot.data![index];
+            final isPost = item['type'] == 'post';
+            return isPost
+                ? _buildSharedPostsItem(item)
+                : _buildSharedReelsItem(item);
+          },
+        );
+      },
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _getCombinedSharedContent() async {
+    final postsSnapshot =
+        await _firestore
+            .collection('users')
+            .doc(_auth.currentUser!.uid)
+            .collection('sharedPosts')
+            .get();
+
+    final reelsSnapshot =
+        await _firestore
+            .collection('users')
+            .doc(_auth.currentUser!.uid)
+            .collection('sharedReels')
+            .get();
+
+    List<Map<String, dynamic>> allContent = [];
+
+    for (var doc in postsSnapshot.docs) {
+      final data = doc.data();
+      data['type'] = 'post';
+      allContent.add(data);
+    }
+
+    for (var doc in reelsSnapshot.docs) {
+      final data = doc.data();
+      data['type'] = 'reel';
+      allContent.add(data);
+    }
+
+    allContent.sort((a, b) {
+      final aTime = a['sharedAt'] as Timestamp?;
+      final bTime = b['sharedAt'] as Timestamp?;
+      if (aTime == null && bTime == null) return 0;
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      return bTime.compareTo(aTime);
+    });
+
+    return allContent;
+  }
+
+  Widget _buildSharedPostsItem(Map<String, dynamic> sharedPost) {
+    final imageUrls = List<String>.from(sharedPost['imageUrls'] ?? []);
+    final firstImageUrl = imageUrls.isNotEmpty ? imageUrls[0] : null;
+    final isMultiImage = imageUrls.length > 1;
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (_) => PostScreen(
+                  uid: sharedPost['uid'] ?? '',
+                  postId: sharedPost['postId'] ?? '',
+                  username: sharedPost['username'] ?? '',
+                  caption: sharedPost['caption'] ?? '',
+                  imageUrls: imageUrls,
+                  postTime:
+                      sharedPost['postTime'] != null
+                          ? _formatTimestamp(
+                            sharedPost['postTime'] as Timestamp,
+                          )
+                          : 'Unknown time',
+                  avatarUrl: sharedPost['avatarUrl'] ?? '',
+                ),
+          ),
+        );
+      },
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child:
+                firstImageUrl != null
+                    ? CachedNetworkImage(
+                      imageUrl: firstImageUrl,
+                      fit: BoxFit.cover,
+                      placeholder:
+                          (context, url) => Container(
+                            color: Colors.grey[300],
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                      errorWidget:
+                          (context, url, error) => Container(
+                            color: Colors.grey[300],
+                            child: const Icon(Icons.image_not_supported),
+                          ),
+                    )
+                    : Container(
+                      color: Colors.grey[300],
+                      child: const Icon(Icons.image_not_supported),
+                    ),
+          ),
+          if (isMultiImage)
+            const Positioned(
+              right: 4,
+              top: 4,
+              child: Icon(Icons.collections, color: Colors.white, size: 20),
+            ),
+          Positioned(
+            left: 4,
+            bottom: 4,
+            child: Container(
+              padding: EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.7),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Icon(Icons.share, color: Colors.white, size: 16),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSharedReelsItem(Map<String, dynamic> sharedReel) {
+    final thumbnailUrl = sharedReel['thumbnailUrl'] ?? '';
+    final videoUrl = sharedReel['videoUrl'] ?? '';
+    final caption = sharedReel['caption'] ?? '';
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) =>
+                    ReelDetailScreen(videoUrl: videoUrl, caption: caption),
+          ),
+        );
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          thumbnailUrl.isNotEmpty
+              ? CachedNetworkImage(
+                imageUrl: thumbnailUrl,
+                fit: BoxFit.cover,
+                placeholder:
+                    (context, url) => Center(
+                      child: SizedBox(
+                        width: 20.w,
+                        height: 20.h,
+                        child: CircularProgressIndicator(strokeWidth: 2.w),
+                      ),
+                    ),
+                errorWidget:
+                    (context, url, error) =>
+                        Center(child: Icon(Icons.error, size: 20.w)),
+              )
+              : Container(
+                color: Colors.grey[300],
+                child: Icon(Icons.videocam, size: 30, color: Colors.grey[600]),
+              ),
+          const Positioned(
+            bottom: 5,
+            right: 5,
+            child: Icon(
+              Icons.play_circle_outline,
+              color: Colors.white,
+              size: 24,
+            ),
+          ),
+          Positioned(
+            left: 4,
+            bottom: 4,
+            child: Container(
+              padding: EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.7),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Icon(Icons.share, color: Colors.white, size: 16),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildUserPosts(String uid) {
     return StreamBuilder<QuerySnapshot>(
       stream:
@@ -445,7 +675,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (aTime == null && bTime == null) return 0;
           if (aTime == null) return 1;
           if (bTime == null) return -1;
-          return bTime.compareTo(aTime); // Newest first
+          return bTime.compareTo(aTime);
         });
 
         return GridView.builder(
@@ -462,7 +692,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             final postId = posts[index].id;
             final caption = post['caption'] ?? '';
             final imageUrls = List<String>.from(post['imageUrls'] ?? []);
-            final postTime = post['postTime'] ?? '';
             final firstImageUrl = imageUrls.isNotEmpty ? imageUrls[0] : null;
             final isMultiImage = imageUrls.length > 1;
 
@@ -544,7 +773,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (aTime == null && bTime == null) return 0;
           if (aTime == null) return 1;
           if (bTime == null) return -1;
-          return bTime.compareTo(aTime); // Newest first
+          return bTime.compareTo(aTime);
         });
 
         return GridView.builder(
@@ -616,6 +845,109 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
             );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSharedPosts() {
+    return StreamBuilder<QuerySnapshot>(
+      stream:
+          _firestore
+              .collection('users')
+              .doc(_auth.currentUser!.uid)
+              .collection('sharedPosts')
+              .orderBy('sharedAt', descending: true)
+              .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.share, size: 80, color: Colors.grey),
+                SizedBox(height: 16),
+                Text(
+                  'Chưa có bài viết đã chia sẻ',
+                  style: TextStyle(fontSize: 18, color: Colors.grey),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Chia sẻ các bài viết để xem lại sau',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }
+
+        final sharedPosts = snapshot.data!.docs;
+
+        return GridView.builder(
+          padding: EdgeInsets.all(2.w),
+          itemCount: sharedPosts.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisSpacing: 2,
+            crossAxisSpacing: 2,
+          ),
+          itemBuilder: (context, index) {
+            final sharedPost =
+                sharedPosts[index].data() as Map<String, dynamic>;
+            return _buildSharedPostsItem(sharedPost);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSharedReels() {
+    return StreamBuilder<QuerySnapshot>(
+      stream:
+          _firestore
+              .collection('users')
+              .doc(_auth.currentUser!.uid)
+              .collection('sharedReels')
+              .orderBy('sharedAt', descending: true)
+              .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.share, size: 80, color: Colors.grey),
+                SizedBox(height: 16),
+                Text(
+                  'Chưa có reel đã chia sẻ',
+                  style: TextStyle(fontSize: 18, color: Colors.grey),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final sharedReels = snapshot.data!.docs;
+        return GridView.builder(
+          padding: EdgeInsets.all(2.w),
+          itemCount: sharedReels.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisSpacing: 2,
+            crossAxisSpacing: 2,
+          ),
+          itemBuilder: (context, index) {
+            final sharedReel =
+                sharedReels[index].data() as Map<String, dynamic>;
+            return _buildSharedReelsItem(sharedReel);
           },
         );
       },

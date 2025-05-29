@@ -382,6 +382,7 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
         _showReplyInput = false;
       });
       _loadCurrentUserStories();
+      loadViewedBy(); // Cập nhật viewedBy cho story đầu tiên của user mới
     } else {
       Navigator.of(context).pop();
     }
@@ -394,6 +395,7 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
         _showReplyInput = false;
       });
       _loadCurrentUserStories();
+      loadViewedBy(); // Cập nhật viewedBy cho story đầu tiên của user mới
     } else {
       Navigator.of(context).pop();
     }
@@ -405,6 +407,21 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
     });
     _progressController.stop();
     _videoController?.pause();
+  }
+
+  void _handleSwipe(DragEndDetails details) {
+    if (_showReplyInput) return;
+
+    _resumeStory();
+    final velocity = details.velocity.pixelsPerSecond.dx;
+
+    if (velocity < -100) {
+      // Vuốt sang phải -> Chuyển đến user tiếp theo
+      _navigateToNextUser();
+    } else if (velocity > 100) {
+      // Vuốt sang trái -> Chuyển đến user trước đó
+      _navigateToPreviousUser();
+    }
   }
 
   void _resumeStory() {
@@ -510,7 +527,12 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
       backgroundColor: Colors.black,
       body: GestureDetector(
         onTapDown: _showReplyInput ? null : (details) => _pauseStory(),
-        onTapUp: _showReplyInput ? null : _handleTap,
+        onTapUp:
+            _showReplyInput
+                ? null
+                : _handleTap, // Điều hướng giữa story trong user
+        onHorizontalDragEnd:
+            _showReplyInput ? null : _handleSwipe, // Điều hướng giữa user
         onTapCancel: _showReplyInput ? null : () => _resumeStory(),
         child: Stack(
           children: [

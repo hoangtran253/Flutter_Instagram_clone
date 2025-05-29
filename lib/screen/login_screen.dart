@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_instagram_clone/auth/admin_auth.dart';
 import 'package:flutter_instagram_clone/data/firebase_service/firebase_auth.dart';
 import 'package:flutter_instagram_clone/screen/adminscreens/admin_dashboard.dart';
+import 'package:flutter_instagram_clone/screen/forgotpassword_screen.dart';
 import 'package:flutter_instagram_clone/widgets/navigation.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -251,7 +252,10 @@ class _LoginScreenState extends State<LoginScreen>
       alignment: Alignment.centerRight,
       child: TextButton(
         onPressed: () {
-          // Add forgot password logic
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => ForgotPassword()),
+          );
         },
         child: Text(
           'Forgot Password?',
@@ -360,11 +364,36 @@ class _LoginScreenState extends State<LoginScreen>
         email: email.text.trim(),
         password: password.text,
       );
-      // AuthWrapper will handle navigation
-    } catch (e) {
-      if (mounted) {
-        _showErrorSnackBar('Login failed: ${e.toString()}');
+      // Navigation handled by AuthWrapper
+    } on FirebaseAuthException catch (e) {
+      String errorMessage;
+
+      switch (e.code) {
+        case 'invalid-email':
+          errorMessage = 'Email sai địn dạng.';
+          break;
+        case 'user-disabled':
+          errorMessage = 'Tài khoản bị vô hiệu hóa!';
+          break;
+        case 'user-not-found':
+          errorMessage = 'Email chưa đăng ký.';
+          break;
+        case 'wrong-password':
+          errorMessage = 'Sai mật khẩu. Thử lại!';
+          break;
+        case 'too-many-requests':
+          errorMessage = 'Bị khóa tạm thời do đăng nhập sai nhiều lần.';
+          break;
+        case 'network-request-failed':
+          errorMessage = 'No internet connection.';
+          break;
+        default:
+          errorMessage = 'Login failed: ${e.message}';
       }
+
+      if (mounted) _showErrorSnackBar(errorMessage);
+    } catch (e) {
+      if (mounted) _showErrorSnackBar('Unexpected error: ${e.toString()}');
     } finally {
       if (mounted) {
         setState(() {

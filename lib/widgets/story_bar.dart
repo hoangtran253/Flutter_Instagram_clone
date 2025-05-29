@@ -391,12 +391,13 @@ class _StoryBarState extends State<StoryBar> with TickerProviderStateMixin {
                       hasUnviewedStories
                           ? const LinearGradient(
                             colors: [
-                              Color(0xFFFF6B6B),
-                              Color(0xFFFFE066),
-                              Color(0xFF4ECDC4),
+                              Color(0xFF247EE3),
                               Color(0xFF45B7D1),
                               Color(0xFF96CEB4),
-                              Color(0xFFFD79A8),
+                              Color(0xFFF58529),
+                              Color(0xFFDD2A7B),
+                              Color(0xFF8134AF),
+                              Color(0xFF515BD4),
                             ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,

@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_instagram_clone/screen/post_screen.dart';
+import 'package:flutter_instagram_clone/screen/profile_screen.dart';
+import 'package:flutter_instagram_clone/screen/authprofile_screen.dart';
 import 'package:flutter_instagram_clone/widgets/postservice/comments.dart';
 import 'package:flutter_instagram_clone/widgets/postservice/like.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -44,19 +46,211 @@ class _PostWidgetState extends State<PostWidget>
   List<Map<String, dynamic>> _likedUsersData = [];
   bool _isLoading = false;
   int _currentImageIndex = 0; // Track current image in carousel
+  bool _isFollowing = false;
+  bool _isCurrentUser = false;
+  bool _isSaved = false;
+  int _shareCount = 0;
 
   final LikeService _likeService = LikeService();
   final CommentService _commentService = CommentService();
   final TextEditingController _commentController = TextEditingController();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
+    _checkIfCurrentUser();
     if (widget.postId.isNotEmpty) {
       _loadPostData();
+      _checkSaveStatus();
+      if (!_isCurrentUser) {
+        _checkFollowStatus();
+      }
     } else {
       print('Error: Invalid postId provided to PostWidget');
+    }
+  }
+
+  void _checkIfCurrentUser() {
+    final currentUser = _auth.currentUser;
+    if (currentUser != null && currentUser.uid == widget.uid) {
+      _isCurrentUser = true;
+    }
+  }
+
+  Future<void> _checkSaveStatus() async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      final saveDoc =
+          await _firestore
+              .collection('users')
+              .doc(currentUser.uid)
+              .collection('saved')
+              .doc(widget.postId)
+              .get();
+
+      setState(() {
+        _isSaved = saveDoc.exists;
+      });
+    } catch (e) {
+      print('Error checking save status: $e');
+    }
+  }
+
+  Future<void> _toggleSave() async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null || widget.postId.isEmpty) return;
+
+    try {
+      final saveRef = _firestore
+          .collection('users')
+          .doc(currentUser.uid)
+          .collection('saved')
+          .doc(widget.postId);
+
+      if (_isSaved) {
+        // Unsave
+        await saveRef.delete();
+      } else {
+        // Save
+        await saveRef.set({
+          'postId': widget.postId,
+          'username': widget.username,
+          'caption': widget.caption,
+          'imageUrls': widget.imageUrls,
+          'postTime': widget.postTime,
+          'avatarUrl': widget.avatarUrl,
+          'uid': widget.uid,
+          'savedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      setState(() {
+        _isSaved = !_isSaved;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isSaved ? 'Đã lưu bài viết' : 'Đã bỏ lưu bài viết'),
+          duration: Duration(milliseconds: 1500),
+        ),
+      );
+    } catch (e) {
+      print('Error toggling save: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Có lỗi xảy ra: $e')));
+    }
+  }
+
+  Future<void> _checkFollowStatus() async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null || _isCurrentUser) return;
+
+    try {
+      final followDoc =
+          await _firestore
+              .collection('users')
+              .doc(currentUser.uid)
+              .collection('following')
+              .doc(widget.uid)
+              .get();
+
+      setState(() {
+        _isFollowing = followDoc.exists;
+      });
+    } catch (e) {
+      print('Error checking follow status: $e');
+    }
+  }
+
+  Future<void> _toggleFollow() async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null || _isCurrentUser) return;
+
+    try {
+      final batch = _firestore.batch();
+
+      if (_isFollowing) {
+        // Unfollow
+        batch.delete(
+          _firestore
+              .collection('users')
+              .doc(currentUser.uid)
+              .collection('following')
+              .doc(widget.uid),
+        );
+
+        batch.delete(
+          _firestore
+              .collection('users')
+              .doc(widget.uid)
+              .collection('followers')
+              .doc(currentUser.uid),
+        );
+      } else {
+        // Follow
+        batch.set(
+          _firestore
+              .collection('users')
+              .doc(currentUser.uid)
+              .collection('following')
+              .doc(widget.uid),
+          {
+            'timestamp': FieldValue.serverTimestamp(),
+            'username': widget.username,
+            'avatarUrl': widget.avatarUrl,
+          },
+        );
+
+        batch.set(
+          _firestore
+              .collection('users')
+              .doc(widget.uid)
+              .collection('followers')
+              .doc(currentUser.uid),
+          {'timestamp': FieldValue.serverTimestamp()},
+        );
+      }
+
+      await batch.commit();
+
+      setState(() {
+        _isFollowing = !_isFollowing;
+      });
+    } catch (e) {
+      print('Error toggling follow: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Có lỗi xảy ra: $e')));
+    }
+  }
+
+  void _navigateToProfile() {
+    if (_isCurrentUser) {
+      // Navigate to current user's profile screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ProfileScreen(), // Adjust constructor as needed
+        ),
+      );
+    } else {
+      // Navigate to other user's profile screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder:
+              (context) => OtherUserProfileScreen(
+                userId: widget.uid,
+                username: widget.username,
+              ),
+        ),
+      );
     }
   }
 
@@ -93,6 +287,9 @@ class _PostWidgetState extends State<PostWidget>
         widget.postId,
       );
 
+      // Thêm load share count
+      final shareCount = await _getShareCount(widget.postId);
+
       List<Map<String, dynamic>> likedUsersData = [];
       for (String uid in likedUsers.take(3)) {
         try {
@@ -117,6 +314,7 @@ class _PostWidgetState extends State<PostWidget>
         _likedUsers = likedUsers;
         _likedUsersData = likedUsersData;
         _commentsCount = commentsCount;
+        _shareCount = shareCount; // Cập nhật share count
         _isLoading = false;
       });
     } catch (e) {
@@ -127,6 +325,74 @@ class _PostWidgetState extends State<PostWidget>
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error loading post data')));
+    }
+  }
+
+  Future<int> _getShareCount(String postId) async {
+    try {
+      final snapshot =
+          await _firestore
+              .collection('posts')
+              .doc(postId)
+              .collection('shares')
+              .get();
+      return snapshot.docs.length;
+    } catch (e) {
+      print('Error getting share count: $e');
+      return 0;
+    }
+  }
+
+  Future<void> _sharePost() async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null || widget.postId.isEmpty) return;
+
+    try {
+      // Thêm vào collection shares của post
+      await _firestore
+          .collection('posts')
+          .doc(widget.postId)
+          .collection('shares')
+          .doc(currentUser.uid)
+          .set({
+            'sharedAt': FieldValue.serverTimestamp(),
+            'sharedBy': currentUser.uid,
+          });
+
+      // Thêm vào sharedPosts của user
+      await _firestore
+          .collection('users')
+          .doc(currentUser.uid)
+          .collection('sharedPosts')
+          .doc(widget.postId)
+          .set({
+            'postId': widget.postId,
+            'username': widget.username,
+            'caption': widget.caption,
+            'imageUrls': widget.imageUrls,
+            'postTime': widget.postTime,
+            'avatarUrl': widget.avatarUrl,
+            'uid': widget.uid,
+            'sharedAt': FieldValue.serverTimestamp(),
+          });
+
+      // Cập nhật share count
+      final newShareCount = await _getShareCount(widget.postId);
+      setState(() {
+        _shareCount = newShareCount;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã chia sẻ bài viết'),
+          duration: Duration(milliseconds: 1500),
+        ),
+      );
+    } catch (e) {
+      print('Error sharing post: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Có lỗi xảy ra khi chia sẻ: $e')));
     }
   }
 
@@ -272,43 +538,74 @@ class _PostWidgetState extends State<PostWidget>
             padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
             child: Row(
               children: [
-                Container(
-                  width: 40.w,
-                  height: 40.w,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.grey.shade300, width: 1),
-                  ),
-                  child: ClipOval(
-                    child:
-                        widget.avatarUrl.isNotEmpty
-                            ? CachedNetworkImage(
-                              imageUrl: widget.avatarUrl,
-                              fit: BoxFit.cover,
-                              placeholder:
-                                  (context, url) => Center(
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 1.5,
+                GestureDetector(
+                  onTap: _navigateToProfile,
+                  child: Container(
+                    width: 40.w,
+                    height: 40.w,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.grey.shade300, width: 1),
+                    ),
+                    child: ClipOval(
+                      child:
+                          widget.avatarUrl.isNotEmpty
+                              ? CachedNetworkImage(
+                                imageUrl: widget.avatarUrl,
+                                fit: BoxFit.cover,
+                                placeholder:
+                                    (context, url) => Center(
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 1.5,
+                                      ),
                                     ),
-                                  ),
-                              errorWidget:
-                                  (context, url, error) => Icon(Icons.error),
-                            )
-                            : Icon(Icons.account_circle, size: 35.w),
+                                errorWidget:
+                                    (context, url, error) => Icon(Icons.error),
+                              )
+                              : Icon(Icons.account_circle, size: 35.w),
+                    ),
                   ),
                 ),
                 SizedBox(width: 10.w),
                 Expanded(
-                  child: Text(
-                    widget.username,
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w600,
+                  child: GestureDetector(
+                    onTap: _navigateToProfile,
+                    child: Text(
+                      widget.username,
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
+                // Follow button - only show if not current user and not following
+                if (!_isCurrentUser && !_isFollowing) ...[
+                  SizedBox(width: 8.w),
+                  GestureDetector(
+                    onTap: _toggleFollow,
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 6.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.blue,
+                        borderRadius: BorderRadius.circular(6.r),
+                      ),
+                      child: Text(
+                        'Follow',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
                 IconButton(
-                  icon: const Icon(Icons.more_vert, color: Colors.white),
+                  icon: const Icon(Icons.more_vert, color: Colors.black),
                   onPressed: _onMorePressed,
                 ),
               ],
@@ -461,9 +758,30 @@ class _PostWidgetState extends State<PostWidget>
                   ],
                 ),
                 SizedBox(width: 15.w),
-                Image.asset('images/sendoutline.png', height: 26.h),
+                GestureDetector(
+                  onTap: _sharePost,
+                  child: Image.asset('images/sendoutline.png', height: 26.h),
+                ),
+                if (_shareCount > 0) ...[
+                  SizedBox(width: 6.w),
+                  Text(
+                    '$_shareCount',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
                 Spacer(),
-                Image.asset('images/save.png', height: 24.h),
+                GestureDetector(
+                  onTap: _toggleSave,
+                  child: Icon(
+                    _isSaved ? Icons.bookmark : Icons.bookmark_border,
+                    color: _isSaved ? Colors.yellow : Colors.black,
+                    size: 26.sp,
+                  ),
+                ),
               ],
             ),
           ),
