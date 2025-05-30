@@ -320,7 +320,7 @@ class _StoryBarState extends State<StoryBar> with TickerProviderStateMixin {
     );
 
     if (isCurrentUser) {
-      // Current user - always show add button and story ring if has stories
+      // Current user - show add button and story ring if has stories
       return Stack(
         children: [
           GestureDetector(
@@ -332,8 +332,18 @@ class _StoryBarState extends State<StoryBar> with TickerProviderStateMixin {
                 shape: BoxShape.circle,
                 gradient:
                     hasStories
-                        ? LinearGradient(
-                          colors: [Colors.grey.shade400, Colors.grey.shade300],
+                        ? const LinearGradient(
+                          colors: [
+                            Color(0xFF247EE3),
+                            Color(0xFF45B7D1),
+                            Color(0xFF96CEB4),
+                            Color(0xFFF58529),
+                            Color(0xFFDD2A7B),
+                            Color(0xFF8134AF),
+                            Color(0xFF515BD4),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         )
                         : null,
                 border:
@@ -447,7 +457,7 @@ class _StoryBarState extends State<StoryBar> with TickerProviderStateMixin {
   ) {
     String displayText;
     if (isCurrentUser) {
-      displayText = 'Your Story';
+      displayText = 'Tin của bạn';
     } else {
       displayText = username;
     }

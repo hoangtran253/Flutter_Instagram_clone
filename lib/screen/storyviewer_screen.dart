@@ -180,6 +180,10 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
 
     final story = _currentStories[_currentStoryIndex];
     final storyId = story['storyId'];
+    final storyOwnerId = widget.allUsers[_currentUserIndex]['userId'];
+
+    // Không gửi thông báo nếu người dùng thích story của chính mình
+    if (storyOwnerId == user.uid) return;
 
     try {
       final likeRef = _firestore
@@ -210,6 +214,27 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
         _likeAnimationController.forward().then((_) {
           _likeAnimationController.reverse();
         });
+
+        // Gửi thông báo đến chủ story
+        final userDoc =
+            await _firestore.collection('users').doc(user.uid).get();
+        final userData = userDoc.data() as Map<String, dynamic>?;
+
+        await _firestore
+            .collection('users')
+            .doc(storyOwnerId)
+            .collection('notifications')
+            .add({
+              'type': 'likeStory',
+              'payload': {
+                'fromUid': user.uid,
+                'storyId': storyId,
+                'fromUsername': userData?['username'] ?? 'Người dùng',
+                'fromAvatar': userData?['avatarUrl'] ?? '',
+              },
+              'timestamp': FieldValue.serverTimestamp(),
+              'isRead': false,
+            });
       }
     } catch (e) {
       print('Error toggling like: $e');

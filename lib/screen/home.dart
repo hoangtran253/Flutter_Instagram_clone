@@ -1,8 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_instagram_clone/screen/chatlist_screen.dart';
-import 'package:flutter_instagram_clone/widgets/post_widget.dart';
 import 'package:flutter_instagram_clone/screen/notifications_screen.dart';
+import 'package:flutter_instagram_clone/widgets/post_widget.dart';
 import 'package:flutter_instagram_clone/widgets/notifications.dart';
 import 'package:flutter_instagram_clone/widgets/story_bar.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -71,41 +72,46 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icon(
                     Icons.notifications_none,
                     color: Colors.black,
-                    size: 26,
+                    size: 28,
                   ),
                   onPressed: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => NotificationScreen(),
+                        builder: (context) => NotificationsScreen(),
                       ),
                     );
                   },
                 ),
-                StreamBuilder<int>(
-                  stream: _notificationService.getUnreadCount(),
+                StreamBuilder<QuerySnapshot>(
+                  stream:
+                      FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(FirebaseAuth.instance.currentUser?.uid)
+                          .collection('notifications')
+                          .where('isRead', isEqualTo: false)
+                          .snapshots(),
                   builder: (context, snapshot) {
-                    final unreadCount = snapshot.data ?? 0;
+                    final unreadCount = snapshot.data?.docs.length ?? 0;
                     if (unreadCount == 0) return SizedBox();
-
                     return Positioned(
-                      right: 8.w,
-                      top: 8.h,
+                      right: 8,
+                      top: 8,
                       child: Container(
-                        padding: EdgeInsets.all(2.w),
+                        padding: EdgeInsets.all(2),
                         decoration: BoxDecoration(
                           color: Colors.red,
-                          borderRadius: BorderRadius.circular(10.r),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                         constraints: BoxConstraints(
-                          minWidth: 16.w,
-                          minHeight: 16.h,
+                          minWidth: 16,
+                          minHeight: 16,
                         ),
                         child: Text(
                           unreadCount > 99 ? '99+' : unreadCount.toString(),
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 10.sp,
+                            fontSize: 8,
                             fontWeight: FontWeight.bold,
                           ),
                           textAlign: TextAlign.center,

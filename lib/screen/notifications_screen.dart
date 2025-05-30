@@ -1,292 +1,480 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_instagram_clone/widgets/notifications.dart';
+import 'package:flutter_instagram_clone/screen/authprofile_screen.dart';
 import 'package:flutter_instagram_clone/screen/post_screen.dart';
+import 'package:flutter_instagram_clone/screen/storyviewer_screen.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-class NotificationScreen extends StatefulWidget {
-  const NotificationScreen({super.key});
+class NotificationsScreen extends StatelessWidget {
+  const NotificationsScreen({Key? key}) : super(key: key);
 
-  @override
-  State<NotificationScreen> createState() => _NotificationScreenState();
-}
-
-class _NotificationScreenState extends State<NotificationScreen> {
-  final NotificationService _notificationService = NotificationService();
-
-  String _getTimeAgo(dynamic timestamp) {
-    if (timestamp == null) return '';
-
-    DateTime notificationTime;
-    if (timestamp is Timestamp) {
-      notificationTime = timestamp.toDate();
-    } else if (timestamp is DateTime) {
-      notificationTime = timestamp;
-    } else {
-      return '';
-    }
-
-    final now = DateTime.now();
-    final difference = now.difference(notificationTime);
-
-    if (difference.inDays > 7) {
-      return '${difference.inDays ~/ 7} tuần trước';
-    } else if (difference.inDays > 0) {
-      return '${difference.inDays} ngày trước';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours} giờ trước';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes} phút trước';
-    } else {
-      return 'Vừa xong';
-    }
-  }
-
-  Widget _getNotificationIcon(String type) {
-    switch (type) {
-      case NotificationService.LIKE_POST:
-      case NotificationService.LIKE_COMMENT:
-        return Icon(Icons.favorite, color: Colors.red, size: 24.sp);
-      case NotificationService.COMMENT_POST:
-      case NotificationService.REPLY_COMMENT:
-        return Icon(Icons.comment, color: Colors.blue, size: 24.sp);
-      case NotificationService.FOLLOW_USER:
-        return Icon(Icons.person_add, color: Colors.green, size: 24.sp);
-      default:
-        return Icon(Icons.notifications, color: Colors.grey, size: 24.sp);
-    }
-  }
-
-  Future<void> _navigateToPost(String? postId) async {
-    if (postId == null || postId.isEmpty) return;
-
+  // Lấy thông tin người dùng từ Firestore dựa trên UID
+  Future<Map<String, dynamic>?> _fetchUserData(String uid) async {
     try {
-      final postDoc =
+      final userDoc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (userDoc.exists) {
+        final data = userDoc.data() as Map<String, dynamic>;
+        data['uid'] = uid;
+        return data;
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching user data for UID $uid: $e');
+      return null;
+    }
+  }
+
+  // Đánh dấu tất cả thông báo là đã đọc
+  Future<void> _markAllAsRead(String userId) async {
+    try {
+      final notifications =
           await FirebaseFirestore.instance
-              .collection('posts')
-              .doc(postId)
+              .collection('users')
+              .doc(userId)
+              .collection('notifications')
+              .where('isRead', isEqualTo: false)
               .get();
 
-      if (postDoc.exists && mounted) {
-        final postData = postDoc.data() as Map<String, dynamic>;
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder:
-                (context) => PostScreen(
-                  uid: postData['uid'],
-                  postId: postId,
-                  username: postData['username'] ?? '',
-                  caption: postData['caption'] ?? '',
-                  imageUrls: postData['imageUrl'] ?? '',
-                  postTime: _getTimeAgo(postData['postTime']),
-                  avatarUrl: postData['avatarUrl'] ?? '',
-                ),
-          ),
-        );
+      final batch = FirebaseFirestore.instance.batch();
+      for (var doc in notifications.docs) {
+        batch.update(doc.reference, {'isRead': true});
+      }
+      await batch.commit();
+    } catch (e) {
+      print('Error marking all notifications as read: $e');
+    }
+  }
+
+  // Xóa thông báo
+  Future<void> _deleteNotification(DocumentReference notifRef) async {
+    try {
+      await notifRef.delete();
+    } catch (e) {
+      print('Error deleting notification: $e');
+    }
+  }
+
+  String _notificationMessage(Map<String, dynamic> notif, String username) {
+    final type = notif['type'] ?? 'unknown';
+    final payload = notif['payload'] ?? {};
+    final displayUsername = username.isNotEmpty ? username : 'Người dùng';
+    switch (type) {
+      case 'like':
+        return '$displayUsername đã thích bài viết của bạn';
+      case 'comment':
+        return '$displayUsername đã bình luận: "${payload['comment'] ?? ''}"';
+      case 'follow':
+        return '$displayUsername đã theo dõi bạn';
+      case 'share':
+        return '$displayUsername đã chia sẻ bài viết của bạn';
+      case 'likeStory': // Thêm case cho likeStory
+        return '$displayUsername đã thích story của bạn';
+      default:
+        return 'Bạn có thông báo mới';
+    }
+  }
+
+  IconData _iconForType(String type) {
+    switch (type) {
+      case 'like':
+        return Icons.favorite;
+      case 'comment':
+        return Icons.comment;
+      case 'follow':
+        return Icons.person_add;
+      case 'share':
+        return Icons.share;
+      case 'likeStory': // Thêm icon cho likeStory
+        return Icons.favorite_border;
+      default:
+        return Icons.notifications;
+    }
+  }
+
+  String _timeAgo(dynamic timestamp) {
+    DateTime time;
+    try {
+      if (timestamp is Timestamp) {
+        time = timestamp.toDate();
+      } else if (timestamp is DateTime) {
+        time = timestamp;
+      } else {
+        return 'Vừa xong'; // Fallback if timestamp is invalid
       }
     } catch (e) {
-      print('Error navigating to post: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Không thể mở bài viết')));
+      print('Error converting timestamp: $e');
+      return 'Vừa xong'; // Fallback on error
     }
+    final now = DateTime.now();
+    final diff = now.difference(time);
+    if (diff.inDays > 7) return '${diff.inDays ~/ 7} tuần';
+    if (diff.inDays > 0) return '${diff.inDays} ngày';
+    if (diff.inHours > 0) return '${diff.inHours} giờ';
+    if (diff.inMinutes > 0) return '${diff.inMinutes} phút';
+    return 'Vừa xong';
   }
 
   @override
   Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Thông báo'), centerTitle: true),
+        body: const Center(child: Text('Bạn cần đăng nhập để xem thông báo')),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Thông báo',
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: 18.sp,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        title: const Text('Thông báo'),
+        centerTitle: true,
         actions: [
-          TextButton(
-            onPressed: () => _notificationService.markAllAsRead(),
-            child: Text(
-              'Đánh dấu tất cả',
-              style: TextStyle(color: Colors.blue, fontSize: 14.sp),
-            ),
+          IconButton(
+            icon: const Icon(Icons.done_all),
+            tooltip: 'Đánh dấu tất cả đã đọc',
+            onPressed: () async {
+              await _markAllAsRead(currentUser.uid);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Đã đánh dấu tất cả thông báo là đã đọc'),
+                ),
+              );
+            },
           ),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _notificationService.getNotifications(),
+        stream:
+            FirebaseFirestore.instance
+                .collection('users')
+                .doc(currentUser.uid)
+                .collection('notifications')
+                .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator());
           }
-
+          if (snapshot.hasError) {
+            return const Center(child: Text('Lỗi khi tải thông báo'));
+          }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.notifications_none,
-                    size: 64.sp,
-                    color: Colors.grey.shade400,
-                  ),
-                  SizedBox(height: 16.h),
-                  Text(
-                    'Chưa có thông báo nào',
-                    style: TextStyle(
-                      fontSize: 16.sp,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              ),
-            );
+            return const Center(child: Text('Không có thông báo nào'));
           }
 
-          final notifications = snapshot.data!.docs;
+          final notifs = snapshot.data!.docs;
 
-          return ListView.separated(
-            padding: EdgeInsets.symmetric(vertical: 8.h),
-            itemCount: notifications.length,
-            separatorBuilder: (_, __) => Divider(height: 1),
+          // Sắp xếp danh sách notifs theo timestamp giảm dần (mới nhất lên đầu)
+          notifs.sort((a, b) {
+            final aData = a.data() as Map<String, dynamic>;
+            final bData = b.data() as Map<String, dynamic>;
+            final aTimestamp = aData['timestamp'] as Timestamp?;
+            final bTimestamp = bData['timestamp'] as Timestamp?;
+
+            // Xử lý trường hợp timestamp null
+            if (aTimestamp == null && bTimestamp == null) return 0;
+            if (aTimestamp == null)
+              return 1; // Đẩy thông báo không có timestamp xuống dưới
+            if (bTimestamp == null) return -1;
+
+            return bTimestamp.compareTo(aTimestamp); // Sắp xếp giảm dần
+          });
+
+          return ListView.builder(
+            itemCount: notifs.length,
             itemBuilder: (context, index) {
-              final notification = notifications[index];
-              final data = notification.data() as Map<String, dynamic>;
-              final isRead = data['isRead'] ?? false;
+              final notif = notifs[index];
+              final data = notif.data() as Map<String, dynamic>;
+              final payload = data['payload'] ?? {};
+              final fromUid = payload['fromUid'] ?? '';
+              final isRead = data['isRead'] == true;
 
-              return Container(
-                color: isRead ? Colors.white : Colors.blue.shade50,
-                child: ListTile(
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 16.w,
-                    vertical: 8.h,
-                  ),
-                  leading: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 24.r,
-                        backgroundColor: Colors.grey.shade300,
-                        backgroundImage:
-                            data['senderAvatarUrl'] != null &&
-                                    data['senderAvatarUrl'].isNotEmpty
-                                ? CachedNetworkImageProvider(
-                                  data['senderAvatarUrl'],
-                                )
-                                : null,
-                        child:
-                            data['senderAvatarUrl'] == null ||
-                                    data['senderAvatarUrl'].isEmpty
-                                ? Icon(Icons.account_circle, size: 32.sp)
-                                : null,
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: EdgeInsets.all(2.w),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                          child: _getNotificationIcon(data['type'] ?? ''),
-                        ),
-                      ),
-                    ],
-                  ),
-                  title: RichText(
-                    text: TextSpan(
-                      style: TextStyle(color: Colors.black, fontSize: 14.sp),
-                      children: [
-                        TextSpan(
-                          text: data['senderUsername'] ?? 'Unknown User',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        TextSpan(text: ' ${data['message'] ?? ''}'),
-                      ],
-                    ),
-                  ),
-                  subtitle: Text(
-                    _getTimeAgo(data['timestamp']),
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                  trailing:
-                      !isRead
-                          ? Container(
-                            width: 8.w,
-                            height: 8.w,
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              shape: BoxShape.circle,
-                            ),
-                          )
-                          : null,
-                  onTap: () async {
-                    // Mark as read
-                    if (!isRead) {
-                      await _notificationService.markAsRead(notification.id);
-                    }
-
-                    // Navigate based on notification type
-                    final type = data['type'] ?? '';
-                    final postId = data['postId'];
-
-                    if (type == NotificationService.LIKE_POST ||
-                        type == NotificationService.COMMENT_POST ||
-                        type == NotificationService.LIKE_COMMENT ||
-                        type == NotificationService.REPLY_COMMENT) {
-                      await _navigateToPost(postId);
-                    }
-                    // For follow notifications, you might want to navigate to user profile
-                  },
-                  onLongPress: () {
-                    showModalBottomSheet(
-                      context: context,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(16.r),
-                        ),
-                      ),
-                      builder:
-                          (context) => Padding(
-                            padding: EdgeInsets.all(16.w),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                ListTile(
-                                  leading: Icon(
-                                    Icons.delete,
-                                    color: Colors.red,
-                                  ),
-                                  title: Text('Xóa thông báo'),
-                                  onTap: () async {
-                                    Navigator.pop(context);
-                                    await _notificationService
-                                        .deleteNotification(notification.id);
-                                  },
+              return Dismissible(
+                key: Key(notif.id),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  color: Colors.red,
+                  alignment: Alignment.centerRight,
+                  padding: EdgeInsets.symmetric(horizontal: 16.w),
+                  child: const Icon(Icons.delete, color: Colors.white),
+                ),
+                confirmDismiss: (direction) async {
+                  return await showDialog<bool>(
+                        context: context,
+                        builder:
+                            (context) => AlertDialog(
+                              title: const Text('Xóa thông báo'),
+                              content: const Text(
+                                'Bạn có chắc muốn xóa thông báo này?',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed:
+                                      () => Navigator.pop(context, false),
+                                  child: const Text('Hủy'),
                                 ),
-                                if (!isRead)
-                                  ListTile(
-                                    leading: Icon(Icons.mark_email_read),
-                                    title: Text('Đánh dấu đã đọc'),
-                                    onTap: () async {
-                                      Navigator.pop(context);
-                                      await _notificationService.markAsRead(
-                                        notification.id,
-                                      );
-                                    },
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text(
+                                    'Xóa',
+                                    style: TextStyle(color: Colors.red),
                                   ),
+                                ),
                               ],
                             ),
+                      ) ??
+                      false;
+                },
+                onDismissed: (direction) {
+                  _deleteNotification(notif.reference);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Đã xóa thông báo')),
+                  );
+                },
+                child: FutureBuilder<Map<String, dynamic>?>(
+                  future: _fetchUserData(fromUid),
+                  builder: (context, userSnapshot) {
+                    String username = 'Người dùng';
+                    String avatar = '';
+
+                    if (userSnapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return const ListTile(
+                        leading: CircularProgressIndicator(strokeWidth: 2),
+                        title: Text('Đang tải...'),
+                      );
+                    }
+                    if (userSnapshot.hasData && userSnapshot.data != null) {
+                      username = userSnapshot.data!['username'] ?? 'Người dùng';
+                      avatar = userSnapshot.data!['avatarUrl'] ?? '';
+                    }
+
+                    return Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 8.h,
+                      ),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          radius: 20.r,
+                          backgroundColor: Colors.grey.shade300,
+                          child: ClipOval(
+                            child:
+                                avatar.isNotEmpty
+                                    ? CachedNetworkImage(
+                                      imageUrl: avatar,
+                                      fit: BoxFit.cover,
+                                      placeholder:
+                                          (context, url) => const Center(
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 1.5,
+                                            ),
+                                          ),
+                                      errorWidget:
+                                          (context, url, error) => const Icon(
+                                            Icons.account_circle,
+                                            size: 40,
+                                            color: Colors.grey,
+                                          ),
+                                    )
+                                    : const Icon(
+                                      Icons.account_circle,
+                                      size: 40,
+                                      color: Colors.grey,
+                                    ),
                           ),
+                        ),
+                        title: Text(
+                          _notificationMessage(data, username),
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            fontWeight:
+                                isRead ? FontWeight.normal : FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle:
+                            data['timestamp'] != null
+                                ? Text(
+                                  _timeAgo(data['timestamp']),
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                )
+                                : const Text('Vừa xong'),
+                        trailing: Icon(
+                          _iconForType(data['type'] ?? ''),
+                          color: Colors.blue,
+                          size: 24.sp,
+                        ),
+                        tileColor: isRead ? Colors.white : Colors.blue[50],
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8.r),
+                        ),
+                        onTap: () async {
+                          if (!isRead) {
+                            await notif.reference.update({'isRead': true});
+                          }
+                          // Điều hướng dựa trên loại thông báo
+                          if (data['type'] == 'follow') {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder:
+                                    (context) => OtherUserProfileScreen(
+                                      userId: fromUid,
+                                      username: username,
+                                    ),
+                              ),
+                            );
+                          } else if (data['type'] == 'like' ||
+                              data['type'] == 'comment' ||
+                              data['type'] == 'share') {
+                            final postId = payload['postId'];
+                            if (postId != null) {
+                              final postDoc =
+                                  await FirebaseFirestore.instance
+                                      .collection('posts')
+                                      .doc(postId)
+                                      .get();
+                              if (postDoc.exists) {
+                                final postData =
+                                    postDoc.data() as Map<String, dynamic>;
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (context) => PostScreen(
+                                          username: postData['username'] ?? '',
+                                          caption: postData['caption'] ?? '',
+                                          imageUrls: List<String>.from(
+                                            postData['imageUrls'] ?? [],
+                                          ),
+                                          postTime:
+                                              postData['postTime'] is Timestamp
+                                                  ? _timeAgo(
+                                                    postData['postTime'],
+                                                  )
+                                                  : (postData['postTime']
+                                                          ?.toString() ??
+                                                      ''),
+                                          avatarUrl:
+                                              postData['avatarUrl'] ?? '',
+                                          postId: postId,
+                                          uid: postData['uid'] ?? '',
+                                        ),
+                                  ),
+                                );
+                              }
+                            }
+                          } else if (data['type'] == 'likeStory') {
+                            final storyId = payload['storyId'];
+                            if (storyId != null) {
+                              final storyDoc =
+                                  await FirebaseFirestore.instance
+                                      .collection('stories')
+                                      .doc(storyId)
+                                      .get();
+                              if (storyDoc.exists) {
+                                final storyData =
+                                    storyDoc.data() as Map<String, dynamic>;
+                                final expirationTime =
+                                    storyData['expirationTime'] as Timestamp?;
+                                if (expirationTime != null &&
+                                    expirationTime.toDate().isBefore(
+                                      DateTime.now(),
+                                    )) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Story này đã hết hạn'),
+                                    ),
+                                  );
+                                  return;
+                                }
+
+                                final userId = storyData['userId'];
+                                final storiesSnapshot =
+                                    await FirebaseFirestore.instance
+                                        .collection('stories')
+                                        .where(
+                                          'expirationTime',
+                                          isGreaterThan: Timestamp.now(),
+                                        )
+                                        .get();
+
+                                List<Map<String, dynamic>> allUsers = [];
+                                Map<String, List<Map<String, dynamic>>>
+                                userStoriesMap = {};
+
+                                for (var doc in storiesSnapshot.docs) {
+                                  final story = doc.data();
+                                  final userId = story['userId'];
+                                  if (!userStoriesMap.containsKey(userId)) {
+                                    userStoriesMap[userId] = [];
+                                  }
+                                  userStoriesMap[userId]!.add({
+                                    'storyId': doc.id,
+                                    ...story,
+                                  });
+                                }
+
+                                for (var userId in userStoriesMap.keys) {
+                                  final userDoc =
+                                      await FirebaseFirestore.instance
+                                          .collection('users')
+                                          .doc(userId)
+                                          .get();
+                                  if (userDoc.exists) {
+                                    final userData =
+                                        userDoc.data() as Map<String, dynamic>;
+                                    allUsers.add({
+                                      'userId': userId,
+                                      'username': userData['username'] ?? '',
+                                      'avatarUrl': userData['avatarUrl'] ?? '',
+                                      'stories': userStoriesMap[userId]!,
+                                    });
+                                  }
+                                }
+
+                                final initialUserData = allUsers.firstWhere(
+                                  (user) => user['userId'] == userId,
+                                  orElse: () => {},
+                                );
+
+                                if (initialUserData.isNotEmpty) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (context) => StoryViewerScreen(
+                                            initialUserData: initialUserData,
+                                            allUsers: allUsers,
+                                          ),
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Không tìm thấy story'),
+                                    ),
+                                  );
+                                }
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Story không tồn tại'),
+                                  ),
+                                );
+                              }
+                            }
+                          }
+                        },
+                      ),
                     );
                   },
                 ),

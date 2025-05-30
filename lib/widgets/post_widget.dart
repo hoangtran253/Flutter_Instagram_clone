@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_instagram_clone/screen/post_screen.dart';
 import 'package:flutter_instagram_clone/screen/profile_screen.dart';
 import 'package:flutter_instagram_clone/screen/authprofile_screen.dart';
+import 'package:flutter_instagram_clone/widgets/notifications.dart';
 import 'package:flutter_instagram_clone/widgets/postservice/comments.dart';
 import 'package:flutter_instagram_clone/widgets/postservice/like.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -14,7 +15,7 @@ class PostWidget extends StatefulWidget {
   final String postId;
   final String username;
   final String caption;
-  final List<String> imageUrls; // Changed to List<String>
+  final List<String> imageUrls;
   final String postTime;
   final String avatarUrl;
   final String uid;
@@ -24,7 +25,7 @@ class PostWidget extends StatefulWidget {
     required this.postId,
     required this.username,
     required this.caption,
-    required this.imageUrls, // Changed to imageUrls
+    required this.imageUrls,
     required this.postTime,
     required this.avatarUrl,
     required this.uid,
@@ -45,7 +46,7 @@ class _PostWidgetState extends State<PostWidget>
   List<String> _likedUsers = [];
   List<Map<String, dynamic>> _likedUsersData = [];
   bool _isLoading = false;
-  int _currentImageIndex = 0; // Track current image in carousel
+  int _currentImageIndex = 0;
   bool _isFollowing = false;
   bool _isCurrentUser = false;
   bool _isSaved = false;
@@ -113,10 +114,8 @@ class _PostWidgetState extends State<PostWidget>
           .doc(widget.postId);
 
       if (_isSaved) {
-        // Unsave
         await saveRef.delete();
       } else {
-        // Save
         await saveRef.set({
           'postId': widget.postId,
           'username': widget.username,
@@ -136,7 +135,7 @@ class _PostWidgetState extends State<PostWidget>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_isSaved ? 'Đã lưu bài viết' : 'Đã bỏ lưu bài viết'),
-          duration: Duration(milliseconds: 1500),
+          duration: const Duration(milliseconds: 1500),
         ),
       );
     } catch (e) {
@@ -176,7 +175,6 @@ class _PostWidgetState extends State<PostWidget>
       final batch = _firestore.batch();
 
       if (_isFollowing) {
-        // Unfollow
         batch.delete(
           _firestore
               .collection('users')
@@ -184,7 +182,6 @@ class _PostWidgetState extends State<PostWidget>
               .collection('following')
               .doc(widget.uid),
         );
-
         batch.delete(
           _firestore
               .collection('users')
@@ -193,7 +190,21 @@ class _PostWidgetState extends State<PostWidget>
               .doc(currentUser.uid),
         );
       } else {
-        // Follow
+        // Lấy dữ liệu người dùng từ Firestore
+        final userDoc =
+            await _firestore.collection('users').doc(currentUser.uid).get();
+        final userData = userDoc.data() as Map<String, dynamic>?;
+
+        await NotificationService().addNotification(
+          receiverUid: widget.uid,
+          type: 'follow',
+          payload: {
+            'fromUid': currentUser.uid,
+            'fromUsername': userData?['username'] ?? 'Người dùng',
+            'fromAvatar': userData?['avatarUrl'] ?? '',
+          },
+        );
+
         batch.set(
           _firestore
               .collection('users')
@@ -206,7 +217,6 @@ class _PostWidgetState extends State<PostWidget>
             'avatarUrl': widget.avatarUrl,
           },
         );
-
         batch.set(
           _firestore
               .collection('users')
@@ -232,15 +242,11 @@ class _PostWidgetState extends State<PostWidget>
 
   void _navigateToProfile() {
     if (_isCurrentUser) {
-      // Navigate to current user's profile screen
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) => ProfileScreen(), // Adjust constructor as needed
-        ),
+        MaterialPageRoute(builder: (context) => ProfileScreen()),
       );
     } else {
-      // Navigate to other user's profile screen
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -286,8 +292,6 @@ class _PostWidgetState extends State<PostWidget>
       final commentsCount = await _commentService.getCommentsCount(
         widget.postId,
       );
-
-      // Thêm load share count
       final shareCount = await _getShareCount(widget.postId);
 
       List<Map<String, dynamic>> likedUsersData = [];
@@ -314,7 +318,7 @@ class _PostWidgetState extends State<PostWidget>
         _likedUsers = likedUsers;
         _likedUsersData = likedUsersData;
         _commentsCount = commentsCount;
-        _shareCount = shareCount; // Cập nhật share count
+        _shareCount = shareCount;
         _isLoading = false;
       });
     } catch (e) {
@@ -324,7 +328,7 @@ class _PostWidgetState extends State<PostWidget>
       });
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Error loading post data')));
+      ).showSnackBar(const SnackBar(content: Text('Error loading post data')));
     }
   }
 
@@ -348,7 +352,22 @@ class _PostWidgetState extends State<PostWidget>
     if (currentUser == null || widget.postId.isEmpty) return;
 
     try {
-      // Thêm vào collection shares của post
+      // Lấy dữ liệu người dùng từ Firestore
+      final userDoc =
+          await _firestore.collection('users').doc(currentUser.uid).get();
+      final userData = userDoc.data() as Map<String, dynamic>?;
+
+      await NotificationService().addNotification(
+        receiverUid: widget.uid,
+        type: 'share',
+        payload: {
+          'fromUid': currentUser.uid,
+          'fromUsername': userData?['username'] ?? 'Người dùng',
+          'fromAvatar': userData?['avatarUrl'] ?? '',
+          'postId': widget.postId,
+        },
+      );
+
       await _firestore
           .collection('posts')
           .doc(widget.postId)
@@ -359,7 +378,6 @@ class _PostWidgetState extends State<PostWidget>
             'sharedBy': currentUser.uid,
           });
 
-      // Thêm vào sharedPosts của user
       await _firestore
           .collection('users')
           .doc(currentUser.uid)
@@ -376,7 +394,6 @@ class _PostWidgetState extends State<PostWidget>
             'sharedAt': FieldValue.serverTimestamp(),
           });
 
-      // Cập nhật share count
       final newShareCount = await _getShareCount(widget.postId);
       setState(() {
         _shareCount = newShareCount;
@@ -400,7 +417,7 @@ class _PostWidgetState extends State<PostWidget>
     if (widget.postId.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Invalid post ID')));
+      ).showSnackBar(const SnackBar(content: Text('Invalid post ID')));
       return;
     }
 
@@ -409,12 +426,33 @@ class _PostWidgetState extends State<PostWidget>
     });
 
     try {
+      final currentUser = _auth.currentUser;
+      final wasLiked = _isLiked;
+
       await _likeService.toggleLike(widget.postId);
       await _loadPostData();
+
+      if (currentUser != null && widget.uid != currentUser.uid && !wasLiked) {
+        // Lấy dữ liệu người dùng từ Firestore
+        final userDoc =
+            await _firestore.collection('users').doc(currentUser.uid).get();
+        final userData = userDoc.data() as Map<String, dynamic>?;
+
+        await NotificationService().addNotification(
+          receiverUid: widget.uid,
+          type: 'like',
+          payload: {
+            'fromUid': currentUser.uid,
+            'fromUsername': userData?['username'] ?? 'Người dùng',
+            'fromAvatar': userData?['avatarUrl'] ?? '',
+            'postId': widget.postId,
+          },
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Error updating like')));
+      ).showSnackBar(const SnackBar(content: Text('Error updating like')));
     } finally {
       setState(() {
         _isLoading = false;
@@ -436,7 +474,7 @@ class _PostWidgetState extends State<PostWidget>
     if (widget.postId.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Invalid post ID')));
+      ).showSnackBar(const SnackBar(content: Text('Invalid post ID')));
       return;
     }
     showModalBottomSheet(
@@ -1582,24 +1620,55 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
   }
 
   Future<void> _addComment() async {
-    if (widget.postId.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Invalid post ID')));
+    if (widget.postId.isEmpty || _commentController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid post ID or empty comment')),
+      );
       return;
     }
     try {
       await _commentService.addComment(widget.postId, _commentController.text);
+
+      final postDoc =
+          await FirebaseFirestore.instance
+              .collection('posts')
+              .doc(widget.postId)
+              .get();
+      final postOwnerId = postDoc.data()?['uid'] ?? '';
+
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null && postOwnerId != currentUser.uid) {
+        // Lấy dữ liệu người dùng từ Firestore
+        final userDoc =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(currentUser.uid)
+                .get();
+        final userData = userDoc.data() as Map<String, dynamic>?;
+
+        await NotificationService().addNotification(
+          receiverUid: postOwnerId,
+          type: 'comment',
+          payload: {
+            'fromUid': currentUser.uid,
+            'fromUsername': userData?['username'] ?? 'Người dùng',
+            'fromAvatar': userData?['avatarUrl'] ?? '',
+            'postId': widget.postId,
+            'comment': _commentController.text,
+          },
+        );
+      }
+
       _commentController.clear();
       widget.onCommentAdded();
       await _loadComments();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Comment added successfully')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Comment added successfully')),
+      );
     } catch (e) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Error adding comment')));
+      ).showSnackBar(SnackBar(content: Text('Error adding comment: $e')));
     }
   }
 

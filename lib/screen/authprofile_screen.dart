@@ -494,9 +494,11 @@ class _OtherUserProfileScreenState extends State<OtherUserProfileScreen> {
             mainAxisSpacing: 2.h,
           ),
           itemBuilder: (context, index) {
-            final reel = reels[index].data() as Map<String, dynamic>;
+            final reelDoc = reels[index]; // DocumentSnapshot instance
+            final reel = reelDoc.data() as Map<String, dynamic>;
             final videoUrl = reel['videoUrl'] ?? '';
-            final thumbnailUrl = reel['thumbnailUrl'];
+            final thumbnailUrl = reel['thumbnailUrl'] ?? '';
+            final caption = reel['caption'] ?? '';
 
             return GestureDetector(
               onTap: () {
@@ -505,8 +507,10 @@ class _OtherUserProfileScreenState extends State<OtherUserProfileScreen> {
                   MaterialPageRoute(
                     builder:
                         (context) => ReelDetailScreen(
+                          doc: reelDoc.id,
                           videoUrl: videoUrl,
-                          caption: reel['caption'] ?? '',
+                          caption: caption,
+                          thumbnailUrl: thumbnailUrl,
                         ),
                   ),
                 );

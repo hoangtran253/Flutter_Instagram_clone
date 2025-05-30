@@ -190,9 +190,11 @@ class SavedContentScreen extends StatelessWidget {
             crossAxisSpacing: 2,
           ),
           itemBuilder: (context, index) {
-            final savedReel = savedReels[index].data() as Map<String, dynamic>;
+            final savedReelDoc = savedReels[index];
+            final savedReel = savedReelDoc.data() as Map<String, dynamic>;
             final videoUrl = savedReel['videoUrl'] ?? '';
             final thumbnailUrl = savedReel['thumbnailUrl'] ?? '';
+            final caption = savedReel['caption'] ?? '';
 
             return GestureDetector(
               onTap: () {
@@ -201,8 +203,10 @@ class SavedContentScreen extends StatelessWidget {
                   MaterialPageRoute(
                     builder:
                         (context) => ReelDetailScreen(
+                          doc: savedReelDoc.id,
                           videoUrl: videoUrl,
-                          caption: savedReel['caption'] ?? '',
+                          caption: caption,
+                          thumbnailUrl: thumbnailUrl,
                         ),
                   ),
                 );

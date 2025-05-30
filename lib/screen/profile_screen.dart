@@ -528,12 +528,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   username: sharedPost['username'] ?? '',
                   caption: sharedPost['caption'] ?? '',
                   imageUrls: imageUrls,
-                  postTime:
-                      sharedPost['postTime'] != null
-                          ? _formatTimestamp(
-                            sharedPost['postTime'] as Timestamp,
-                          )
-                          : 'Unknown time',
+                  postTime: _formatTimestamp(sharedPost['postTime']),
                   avatarUrl: sharedPost['avatarUrl'] ?? '',
                 ),
           ),
@@ -599,8 +594,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           context,
           MaterialPageRoute(
             builder:
-                (context) =>
-                    ReelDetailScreen(videoUrl: videoUrl, caption: caption),
+                (context) => ReelDetailScreen(
+                  doc: _auth.currentUser!.uid,
+                  videoUrl: videoUrl,
+                  caption: caption,
+                  thumbnailUrl: thumbnailUrl,
+                ),
           ),
         );
       },
@@ -785,9 +784,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisSpacing: 2.h,
           ),
           itemBuilder: (context, index) {
-            final reel = reels[index].data() as Map<String, dynamic>;
+            final reelDoc = reels[index]; // DocumentSnapshot instance
+            final reel = reelDoc.data() as Map<String, dynamic>;
             final videoUrl = reel['videoUrl'] ?? '';
             final thumbnailUrl = reel['thumbnailUrl'] ?? '';
+            final caption = reel['caption'] ?? '';
 
             return GestureDetector(
               onTap: () {
@@ -796,8 +797,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   MaterialPageRoute(
                     builder:
                         (context) => ReelDetailScreen(
+                          doc: reelDoc.id,
                           videoUrl: videoUrl,
-                          caption: reel['caption'] ?? '',
+                          caption: caption,
+                          thumbnailUrl: thumbnailUrl,
                         ),
                   ),
                 );
@@ -967,21 +970,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  String _formatTimestamp(Timestamp timestamp) {
-    final DateTime dateTime = timestamp.toDate();
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays > 7) {
-      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
-    } else if (difference.inDays > 0) {
-      return '${difference.inDays} days ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours} hours ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes} minutes ago';
-    } else {
-      return 'Just now';
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return 'Unknown time';
+    if (timestamp is String) return timestamp; // Đã là string thì trả lại luôn
+    if (timestamp is Timestamp) {
+      final date = timestamp.toDate();
+      final now = DateTime.now();
+      final diff = now.difference(date);
+      if (diff.inDays > 0) return '${diff.inDays} ngày trước';
+      if (diff.inHours > 0) return '${diff.inHours} giờ trước';
+      if (diff.inMinutes > 0) return '${diff.inMinutes} phút trước';
+      return 'Vừa xong';
     }
+    if (timestamp is DateTime) {
+      final now = DateTime.now();
+      final diff = now.difference(timestamp);
+      if (diff.inDays > 0) return '${diff.inDays} ngày trước';
+      if (diff.inHours > 0) return '${diff.inHours} giờ trước';
+      if (diff.inMinutes > 0) return '${diff.inMinutes} phút trước';
+      return 'Vừa xong';
+    }
+    return 'Unknown time';
   }
 }
