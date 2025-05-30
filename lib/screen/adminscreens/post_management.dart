@@ -1,5 +1,8 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_instagram_clone/data/model/adminmodel.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 
 class PostsManagementPage extends StatefulWidget {
@@ -52,15 +55,12 @@ class _PostsManagementPageState extends State<PostsManagementPage> {
       // Filter posts
       _filteredPosts =
           _posts.where((post) {
-            return post['caption'].toString().toLowerCase().contains(
-                  _searchQuery.toLowerCase(),
-                ) ||
-                post['username'].toString().toLowerCase().contains(
-                  _searchQuery.toLowerCase(),
-                );
+            final caption = post['caption']?.toString() ?? '';
+            final username = post['username']?.toString() ?? '';
+            return caption.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                username.toLowerCase().contains(_searchQuery.toLowerCase());
           }).toList();
 
-      // Sort posts
       _filteredPosts.sort((a, b) {
         final DateTime aTime = a['postTime'].toDate();
         final DateTime bTime = b['postTime'].toDate();
@@ -69,6 +69,18 @@ class _PostsManagementPageState extends State<PostsManagementPage> {
             : aTime.compareTo(bTime);
       });
     });
+  }
+
+  // Helper method to safely get imageUrls as List<String>
+  List<String> _getImageUrls(Map<String, dynamic> post) {
+    final imageUrls = post['imageUrls'];
+
+    if (imageUrls == null || imageUrls is! List) {
+      print('Post imageUrls is null or not a list');
+      return [];
+    }
+
+    return List<String>.from(imageUrls);
   }
 
   Future<void> _deletePost(String postId, String username) async {
@@ -117,132 +129,226 @@ class _PostsManagementPageState extends State<PostsManagementPage> {
   }
 
   void _showPostDetails(Map<String, dynamic> post) {
+    int _currentImageIndex = 0;
+    final imageUrls = _getImageUrls(post);
+
     showDialog(
       context: context,
       builder:
-          (context) => Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Container(
-              width: MediaQuery.of(context).size.width * 0.7,
-              padding: EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+          (context) => StatefulBuilder(
+            builder: (context, setDialogState) {
+              return Dialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Container(
+                  width: MediaQuery.of(context).size.width * 0.7,
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      CircleAvatar(
-                        backgroundImage:
-                            post['avatarUrl'] != null
-                                ? NetworkImage(post['avatarUrl'])
-                                : null,
-                        child:
-                            post['avatarUrl'] == null
-                                ? Text(post['username'][0].toUpperCase())
-                                : null,
-                      ),
-                      SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      Row(
                         children: [
-                          Text(
-                            post['username'],
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                          CircleAvatar(
+                            radius: 20.r,
+                            backgroundImage:
+                                post['avatarUrl'] != null &&
+                                        post['avatarUrl'].toString().isNotEmpty
+                                    ? NetworkImage(post['avatarUrl'])
+                                    : null,
+                            child:
+                                post['avatarUrl'] == null ||
+                                        post['avatarUrl'].toString().isEmpty
+                                    ? Text(
+                                      (post['username']?.toString() ?? 'U')[0]
+                                          .toUpperCase(),
+                                    )
+                                    : null,
+                          ),
+                          SizedBox(width: 12.w),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  post['username']?.toString() ??
+                                      'Unknown User',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16.sp,
+                                  ),
+                                ),
+                                Text(
+                                  DateFormat(
+                                    'MMM d, yyyy - HH:mm',
+                                  ).format(post['postTime'].toDate()),
+                                  style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontSize: 12.sp,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          Text(
-                            DateFormat(
-                              'MMM d, yyyy - HH:mm',
-                            ).format(post['postTime'].toDate()),
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 12,
-                            ),
+                          IconButton(
+                            icon: Icon(Icons.delete, color: Colors.red),
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              _deletePost(
+                                post['postId'],
+                                post['username'] ?? 'Unknown',
+                              );
+                            },
+                            tooltip: 'Delete Post',
                           ),
                         ],
                       ),
-                      Spacer(),
-                      IconButton(
-                        icon: Icon(Icons.delete, color: Colors.red),
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          _deletePost(post['postId'], post['username']);
-                        },
-                        tooltip: 'Delete Post',
+                      SizedBox(height: 16.h),
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          imageUrls.isNotEmpty
+                              ? CarouselSlider(
+                                options: CarouselOptions(
+                                  height: 300.h,
+                                  viewportFraction: 1.0,
+                                  enableInfiniteScroll: false,
+                                  onPageChanged: (index, reason) {
+                                    setDialogState(() {
+                                      _currentImageIndex = index;
+                                    });
+                                  },
+                                ),
+                                items:
+                                    imageUrls.map((imageUrl) {
+                                      return CachedNetworkImage(
+                                        imageUrl: imageUrl,
+                                        width: double.infinity,
+                                        height: 300.h,
+                                        fit: BoxFit.cover,
+                                        placeholder:
+                                            (context, url) => Container(
+                                              color: Colors.grey.shade200,
+                                              child: Center(
+                                                child:
+                                                    CircularProgressIndicator(),
+                                              ),
+                                            ),
+                                        errorWidget:
+                                            (context, url, error) => Container(
+                                              color: Colors.grey.shade200,
+                                              child: Column(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(Icons.error, size: 40),
+                                                  SizedBox(height: 8),
+                                                  Text(
+                                                    'Failed to load image',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                      );
+                                    }).toList(),
+                              )
+                              : Container(
+                                width: double.infinity,
+                                height: 300.h,
+                                color: Colors.grey.shade200,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.image_not_supported, size: 40),
+                                    SizedBox(height: 8),
+                                    Text('No images available'),
+                                  ],
+                                ),
+                              ),
+                          if (imageUrls.length > 1)
+                            Positioned(
+                              bottom: 10.h,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: List.generate(
+                                  imageUrls.length,
+                                  (index) => Container(
+                                    width: 8.w,
+                                    height: 8.h,
+                                    margin: EdgeInsets.symmetric(
+                                      horizontal: 4.w,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color:
+                                          _currentImageIndex == index
+                                              ? Colors.blue
+                                              : Colors.grey.withOpacity(0.5),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      SizedBox(height: 16.h),
+                      Text(
+                        post['caption']?.toString() ?? 'No caption',
+                        style: TextStyle(fontSize: 16.sp),
+                      ),
+                      SizedBox(height: 16.h),
+                      Container(
+                        padding: EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Post ID: ${post['postId'] ?? 'N/A'}',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12.sp,
+                              ),
+                            ),
+                            Text(
+                              'User ID: ${post['uid'] ?? 'N/A'}',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12.sp,
+                              ),
+                            ),
+                            Text(
+                              'Images: ${imageUrls.length}',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 12.sp,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 16.h),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: Text('CLOSE'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  SizedBox(height: 16),
-                  if (post['imageUrl'] != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        post['imageUrl'],
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: 300,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Container(
-                            height: 300,
-                            width: double.infinity,
-                            color: Colors.grey[200],
-                            child: Center(
-                              child: CircularProgressIndicator(
-                                value:
-                                    loadingProgress.expectedTotalBytes != null
-                                        ? loadingProgress
-                                                .cumulativeBytesLoaded /
-                                            loadingProgress.expectedTotalBytes!
-                                        : null,
-                              ),
-                            ),
-                          );
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            height: 300,
-                            width: double.infinity,
-                            color: Colors.grey[200],
-                            child: Center(
-                              child: Icon(
-                                Icons.error,
-                                color: Colors.red,
-                                size: 48,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  SizedBox(height: 16),
-                  Text(post['caption'] ?? '', style: TextStyle(fontSize: 16)),
-                  SizedBox(height: 16),
-                  Text(
-                    'Post ID: ${post['postId']}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                  ),
-                  Text(
-                    'User ID: ${post['uid']}',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                  ),
-                  SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Text('CLOSE'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           ),
     );
   }
@@ -346,86 +452,96 @@ class _PostsManagementPageState extends State<PostsManagementPage> {
                     : RefreshIndicator(
                       onRefresh: _loadPosts,
                       child: GridView.builder(
-                        padding: EdgeInsets.all(8),
+                        padding: EdgeInsets.all(2.w),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3,
                           childAspectRatio: 1,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
+                          crossAxisSpacing: 2.w,
+                          mainAxisSpacing: 2.h,
                         ),
                         itemCount: _filteredPosts.length,
                         itemBuilder: (context, index) {
                           final post = _filteredPosts[index];
+                          final imageUrls = _getImageUrls(post);
+                          final firstImageUrl =
+                              imageUrls.isNotEmpty ? imageUrls[0] : null;
+                          final isMultiImage = imageUrls.length > 1;
+
                           return GestureDetector(
                             onTap: () => _showPostDetails(post),
                             child: Stack(
                               fit: StackFit.expand,
                               children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child:
-                                      post['imageUrl'] != null
-                                          ? Image.network(
-                                            post['imageUrl'],
-                                            fit: BoxFit.cover,
-                                            loadingBuilder: (
-                                              context,
-                                              child,
-                                              loadingProgress,
-                                            ) {
-                                              if (loadingProgress == null)
-                                                return child;
-                                              return Container(
-                                                color: Colors.grey[200],
-                                                child: Center(
-                                                  child: CircularProgressIndicator(
-                                                    value:
-                                                        loadingProgress
-                                                                    .expectedTotalBytes !=
-                                                                null
-                                                            ? loadingProgress
-                                                                    .cumulativeBytesLoaded /
-                                                                loadingProgress
-                                                                    .expectedTotalBytes!
-                                                            : null,
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                            errorBuilder: (
-                                              context,
-                                              error,
-                                              stackTrace,
-                                            ) {
-                                              return Container(
-                                                color: Colors.grey[200],
-                                                child: Center(
-                                                  child: Icon(
-                                                    Icons.error,
-                                                    color: Colors.red,
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                          )
-                                          : Container(
-                                            color: Colors.grey[200],
+                                firstImageUrl != null
+                                    ? CachedNetworkImage(
+                                      imageUrl: firstImageUrl,
+                                      fit: BoxFit.cover,
+                                      placeholder:
+                                          (context, url) => Container(
+                                            color: Colors.grey[300],
                                             child: Center(
-                                              child: Icon(
-                                                Icons.photo,
-                                                color: Colors.grey[400],
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.w,
                                               ),
                                             ),
                                           ),
-                                ),
+                                      errorWidget:
+                                          (context, url, error) => Container(
+                                            color: Colors.grey[300],
+                                            child: Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Icon(Icons.image_not_supported),
+                                                Text(
+                                                  'Error',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                    )
+                                    : Container(
+                                      color: Colors.grey[300],
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.image_not_supported),
+                                          Text(
+                                            'No Image',
+                                            style: TextStyle(fontSize: 10),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                if (isMultiImage)
+                                  Positioned(
+                                    right: 4.w,
+                                    top: 4.h,
+                                    child: Container(
+                                      padding: EdgeInsets.all(2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.7),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Icon(
+                                        Icons.collections,
+                                        color: Colors.white,
+                                        size: 16.sp,
+                                      ),
+                                    ),
+                                  ),
                                 Positioned(
                                   bottom: 0,
                                   left: 0,
                                   right: 0,
                                   child: Container(
                                     padding: EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
+                                      horizontal: 8.w,
+                                      vertical: 4.h,
                                     ),
                                     decoration: BoxDecoration(
                                       gradient: LinearGradient(
@@ -436,10 +552,6 @@ class _PostsManagementPageState extends State<PostsManagementPage> {
                                           Colors.transparent,
                                         ],
                                       ),
-                                      borderRadius: BorderRadius.only(
-                                        bottomLeft: Radius.circular(8),
-                                        bottomRight: Radius.circular(8),
-                                      ),
                                     ),
                                     child: Row(
                                       mainAxisAlignment:
@@ -447,29 +559,31 @@ class _PostsManagementPageState extends State<PostsManagementPage> {
                                       children: [
                                         Expanded(
                                           child: Text(
-                                            post['username'],
+                                            post['username']?.toString() ??
+                                                'Unknown User',
                                             style: TextStyle(
                                               color: Colors.white,
                                               fontWeight: FontWeight.bold,
-                                              fontSize: 12,
+                                              fontSize: 12.sp,
                                             ),
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
-                                        IconButton(
-                                          icon: Icon(
-                                            Icons.delete_outline,
-                                            color: Colors.white,
-                                            size: 18,
-                                          ),
-                                          onPressed:
+                                        GestureDetector(
+                                          onTap:
                                               () => _deletePost(
                                                 post['postId'],
-                                                post['username'],
+                                                post['username']?.toString() ??
+                                                    'Unknown',
                                               ),
-                                          constraints: BoxConstraints(),
-                                          padding: EdgeInsets.all(0),
-                                          tooltip: 'Delete Post',
+                                          child: Container(
+                                            padding: EdgeInsets.all(4.w),
+                                            child: Icon(
+                                              Icons.delete_outline,
+                                              color: Colors.white,
+                                              size: 18.sp,
+                                            ),
+                                          ),
                                         ),
                                       ],
                                     ),

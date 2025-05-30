@@ -35,7 +35,7 @@ class AdminService {
           'uid': data['uid'],
           'username': data['username'],
           'caption': data['caption'],
-          'imageUrl': data['imageUrl'],
+          'imageUrls': data['imageUrls'],
           'avatarUrl': data['avatarUrl'],
           'postTime': data['postTime'],
         };
